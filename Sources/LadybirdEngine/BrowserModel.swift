@@ -30,7 +30,10 @@ public final class BrowserModel {
     @ObservationIgnored private var terminationObserver: (any NSObjectProtocol)?
 
     public init() {
-        webView = PortWebView(frame: NSRect(x: 0, y: 0, width: 1000, height: 700))
+        // Placeholder frame only: SwiftUI lays the view out before the first paint and
+        // reportViewportAfterTabCreation pushes the real size. Kept equal to the window default so the
+        // one frame before layout is not a visibly wrong size.
+        webView = PortWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
     }
 
     /// Starts the engine. Idempotent, and deliberately not in `init`: SwiftUI evaluates a `@State` initial value

@@ -18,6 +18,11 @@ struct LadybirdMacApp: App {
         WindowGroup {
             BrowserWindow()
         }
+        // Matches Ladybird's own launch default (Libraries/LibWebView/Options.h: window_width 800,
+        // window_height 600), so the Mac app opens the same size as the native Qt one. That constant
+        // lives in a C++ header the Swift side cannot read, and exposing two ints across the ABI to
+        // avoid one literal would be a worse trade; the citation is the source of truth instead.
+        .defaultSize(width: 800, height: 600)
         .windowToolbarStyle(.unified)
     }
 }
