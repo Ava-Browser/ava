@@ -163,6 +163,44 @@ public final class PortApp {
         LbTabSetViewport(handle, tab, width, height, scale)
     }
 
+    // MARK: - Input
+
+    /// Positions are CSS pixels relative to the tab's top-left; the shim scales them.
+    ///
+    /// `button` is the button this event concerns, `buttons` every button held during it — a mouse-up carries the set
+    /// still held, which is why they are separate.
+    public func sendMouse(
+        in tab: UInt64,
+        type: PortMouseEventType,
+        x: Double,
+        y: Double,
+        button: PortMouseButton = .none,
+        buttons: PortMouseButton = .none,
+        clickCount: Int32 = 0,
+        wheelDeltaY: Double = 0
+    ) {
+        guard let handle else { return }
+        LbTabSendMouse(
+            handle, tab, type.cValue, x, y,
+            button.cValue, buttons.cValue, clickCount, wheelDeltaY
+        )
+    }
+
+    /// One key transition. `key` is a Web `KeyCode` ordinal, or `PortKey.invalid` when only text is known.
+    ///
+    /// The engine dispatches keys **asynchronously**, through the compositor: returning from this means the event was
+    /// queued, not that the page handled it. Nothing should read page state until a later pump and a frame (Traps.md).
+    public func sendKey(in tab: UInt64, key: Int32 = 0, codePoint: UInt32 = 0, modifiers: UInt32 = 0, isKeyDown: Bool) {
+        guard let handle else { return }
+        LbTabSendKey(handle, tab, key, codePoint, modifiers, isKeyDown ? 1 : 0)
+    }
+
+    /// Types `text` as text. The shim fills the fields a partial `Web::KeyEvent` would silently omit.
+    public func typeText(_ text: String, in tab: UInt64) {
+        guard let handle else { return }
+        text.withCString { LbTabTypeText(handle, tab, $0, text.utf8.count) }
+    }
+
     /// What the address bar's text actually means. `LbTabLoad` parses with `URL::Parser::basic_parse`, which reads
     /// `localhost:8080` as a scheme, so a bare host needs `https://` added before it crosses the ABI.
     public nonisolated static func normalizedURL(_ input: String) -> String {
@@ -174,4 +212,66 @@ public final class PortApp {
         }
         return "https://" + trimmed
     }
+}
+
+/// Swift-side mirror of `LbMouseButton`, so callers never spell the C enum.
+public struct PortMouseButton: OptionSet, Sendable {
+    public let rawValue: Int32
+
+    public init(rawValue: Int32) {
+        self.rawValue = rawValue
+    }
+
+    public static let none = PortMouseButton([])
+    public static let primary = PortMouseButton(rawValue: 1)
+    public static let secondary = PortMouseButton(rawValue: 2)
+    public static let middle = PortMouseButton(rawValue: 4)
+
+    var cValue: LbMouseButton { LbMouseButton(UInt32(rawValue)) }
+}
+
+public enum PortMouseEventType: Sendable {
+    case down
+    case up
+    case move
+    case wheel
+
+    var cValue: LbMouseEventType {
+        switch self {
+        case .down: LbMouseEventDown
+        case .up: LbMouseEventUp
+        case .move: LbMouseEventMove
+        case .wheel: LbMouseEventWheel
+        }
+    }
+}
+
+/// Ordinals into Web's `KeyCode` enum, limited to the keys a browser chrome needs.
+///
+/// The header deliberately takes a raw `int32` rather than an enum of its own, because Web's enum is large and moves on
+/// upstream syncs (R4: no enum widening without a version bump). This mirrors the few values the UI actually sends.
+public enum PortKey {
+    /// `Web::UIEvents::KeyCode::Key_Invalid`.
+    public static let invalid: Int32 = 0
+
+    // Web's `KeyCode` ordinals are the legacy character codes, not a dense 0..n sequence, so these are the values from
+    // Libraries/LibWebCommon/UIEvents/KeyCode.h rather than a guess. Only the non-text keys are mirrored: a text key
+    // crosses as `code_point` with `invalid` as the key, which is what the engine reads anyway.
+    public static let backspace: Int32 = 0x08
+    public static let tab: Int32 = 0x09
+    public static let enter: Int32 = 0x0D
+    public static let escape: Int32 = 0x1B
+    public static let pageUp: Int32 = 0x21
+    public static let pageDown: Int32 = 0x22
+    public static let left: Int32 = 0x25
+    public static let up: Int32 = 0x26
+    public static let right: Int32 = 0x27
+    public static let down: Int32 = 0x28
+    public static let delete: Int32 = 0x2E
+
+    // Modifier bitmask, matching Web::UIEvents::KeyModifier. On macOS `Mod_PlatformCtrl` is `Mod_Super`.
+    public static let modAlt: UInt32 = 1 << 0
+    public static let modCtrl: UInt32 = 1 << 1
+    public static let modShift: UInt32 = 1 << 2
+    public static let modSuper: UInt32 = 1 << 3
 }

@@ -65,6 +65,29 @@ public final class BrowserModel {
             MainActor.assumeIsolated { self?.app?.setViewport(in: self?.tab ?? 0, width: width, height: height, scale: scale) }
         }
 
+        // Input is a straight pass-through: the view already speaks CSS pixels, and the shim scales to device pixels.
+        webView.onMouse = { [weak self] type, x, y, button, buttons, clickCount, wheelDeltaY in
+            MainActor.assumeIsolated {
+                guard let self, let app = self.app else { return }
+                app.sendMouse(
+                    in: self.tab, type: type, x: x, y: y, button: button, buttons: buttons,
+                    clickCount: clickCount, wheelDeltaY: wheelDeltaY
+                )
+            }
+        }
+        webView.onKey = { [weak self] key, codePoint, modifiers, isKeyDown in
+            MainActor.assumeIsolated {
+                guard let self, let app = self.app else { return }
+                app.sendKey(in: self.tab, key: key, codePoint: codePoint, modifiers: modifiers, isKeyDown: isKeyDown)
+            }
+        }
+        webView.onTypeText = { [weak self] text in
+            MainActor.assumeIsolated {
+                guard let self, let app = self.app else { return }
+                app.typeText(text, in: self.tab)
+            }
+        }
+
         tab = app.createTab()
         if tab == 0 {
             failure = "The engine refused to create a tab; it could not load its system theme."
