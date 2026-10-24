@@ -252,6 +252,17 @@ public final class PortWebView: NSView {
         CATransaction.commit()
     }
 
+    /// Pushes the current viewport again, even if it has not changed.
+    ///
+    /// `reportViewport` de-duplicates, which is right for layout passes but wrong at one moment: SwiftUI lays the view
+    /// out before the engine has a tab, so the first report is dropped (there is no tab to tell) and then cached. The
+    /// tab was left at the engine's 1024x768 default and the page rendered at the wrong scale — the painted surface was
+    /// 1024x768 for a 900x398 viewport. Calling this right after the tab exists fixes it.
+    public func reportViewportAfterTabCreation() {
+        lastViewport = nil
+        reportViewport()
+    }
+
     private func reportViewport() {
         guard bounds.width > 0, bounds.height > 0 else { return }
         // Points are CSS pixels; the engine multiplies by the scale itself (Traps.md, "A headless viewport is in

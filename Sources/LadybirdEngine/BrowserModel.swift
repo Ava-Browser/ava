@@ -94,6 +94,10 @@ public final class BrowserModel {
             return
         }
 
+        // The view laid out before this tab existed, so its viewport report was dropped. Send it now, before the first
+        // load, or the page renders at the engine's default size instead of the window's.
+        webView.reportViewportAfterTabCreation()
+
         load(homeURL)
         // R8: the shim's own CFRunLoopTimer in kCFRunLoopCommonModes, so a live resize cannot starve the engine.
         app.startPump()
@@ -124,6 +128,7 @@ public final class BrowserModel {
         let url = PortApp.normalizedURL(input)
         addressText = url
         isLoading = true
+        PortBenchmark.shared.recordLoad(url: url)
         app.load(url, in: tab)
     }
 
@@ -150,6 +155,7 @@ public final class BrowserModel {
 
     private func handlePaint(_ paintedTab: UInt64) {
         guard paintedTab == tab, let surface = app?.surface(in: tab) else { return }
+        PortBenchmark.shared.recordPaint(painted: (surface.paintedWidth, surface.paintedHeight), surface: (surface.surfaceWidth, surface.surfaceHeight), cssSize: webView.bounds.size)
         webView.present(surface)
     }
 }
