@@ -30,6 +30,13 @@ Ranked by how much they actually mattered:
    support is deferred, and on Linux Ladybird's backing stores are shared memory — GPUI would take
    the CPU-copy path there anyway, losing the zero-copy benefit that motivated it.
 
+## Revisit trigger
+
+Reopen this decision if **cross-platform chrome becomes a hard product requirement**. That is the
+one condition the choice was contingent on. It is cheap to revisit: the C ABI is language-agnostic,
+so only `LadybirdUI` and `LadybirdEngine`'s window layer would be replaced — the boundary, the
+pump, and the surface policy all survive.
+
 ## Consequences
 
 - macOS only. Accepted deliberately; Windows was already deferred.

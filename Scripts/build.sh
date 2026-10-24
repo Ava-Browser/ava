@@ -13,13 +13,33 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FORK="${REPO_ROOT}/Extern/ladybird"
 BUILD_DIR="${FORK}/Build/release"
 
-# A fresh `git submodule update --init` checks out master, which has no Libraries/LibPort. The
-# submodule pin is recorded on the native-port branch, so put the tree on it before building.
+# A fresh `git submodule update --init` checks out the pinned SHA detached, and the branch it belongs
+# to is native-port. Earlier this silently force-checked-out native-port, which reset the submodule
+# underneath a staged pointer whenever the branch was not fast-forwarded — build.sh quietly undoing a
+# deliberate pin. It now only switches when that is a no-op (same commit), and refuses otherwise.
 if [[ -d "${FORK}/.git" || -f "${FORK}/.git" ]]; then
-    current="$(git -C "${FORK}" branch --show-current 2>/dev/null || true)"
-    if [[ "${current}" != "native-port" ]]; then
-        echo "fork is on '${current:-detached}', switching to native-port"
-        git -C "${FORK}" checkout -q native-port
+    current_branch="$(git -C "${FORK}" branch --show-current 2>/dev/null || true)"
+    head_sha="$(git -C "${FORK}" rev-parse HEAD 2>/dev/null || true)"
+    branch_sha="$(git -C "${FORK}" rev-parse --verify --quiet native-port 2>/dev/null || true)"
+    if [[ -n "${branch_sha}" && "${head_sha}" != "${branch_sha}" ]]; then
+        if git -C "${FORK}" merge-base --is-ancestor "${head_sha}" "${branch_sha}" 2>/dev/null; then
+            echo "fork is on '${current_branch:-detached}', fast-forwarding to native-port"
+            git -C "${FORK}" checkout -q native-port
+        else
+            cat >&2 <<MSG
+error: the fork is at ${head_sha}, which is not an ancestor of native-port (${branch_sha}).
+
+Refusing to switch branches and reset the submodule underneath the pin this repo records.
+Fix it deliberately:
+
+    cd Extern/ladybird
+    git fetch origin native-port
+    git checkout native-port && git merge --ff-only origin/native-port
+
+Or repin: git -C . checkout <the-sha-you-actually-want> and commit the submodule pointer.
+MSG
+            exit 1
+        fi
     fi
 fi
 

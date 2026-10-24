@@ -19,3 +19,22 @@ not style preferences — each one exists because the alternative produced a mea
 It converts "Swift ↔ C++ interoperability" — templates Swift cannot import, `AK::Function`,
 `NonnullRefPtr`, exceptions Swift cannot catch — into ordinary C FFI. The measured consequence:
 `swiftc` runs with zero interop flags, and the shim dylib has zero ObjC symbols.
+
+---
+
+# Swift layer discipline
+
+R1–R8 govern the boundary and below. **S1–S6 govern everything above it.** Their violations do
+not look like Swift bugs — they look like *engine* bugs, which makes them expensive to debug.
+
+| # | Rule | Why | Enforcement |
+|---|---|---|---|
+| **S1** | **`Unmanaged` and raw `ctx` pointers exist only in `LadybirdBridge`.** Upward layers see typed objects — `LbTab`, `LbSurface`, `LbError` — never an opaque context pointer. | `Unmanaged` is where every lifetime bug in this architecture would live. Confining it means auditing one target, not the whole repo. | `check-layers.sh` grep |
+| **S2** | **`LadybirdEngine`'s public API is `@MainActor`-annotated.** R5's main-thread invariant goes in the type system, not in comments. | A comment can be ignored silently; the compiler cannot. An unannotated entry point is now a type error at the call site. | compiler |
+| **S3** | **No `DispatchQueue` or `Task.detached` anywhere in `Sources/`.** No exceptions, no whitelist. | The entire design — R5's invariant, R2's race-free surface hand-off — rests on there being exactly one thread. A hidden hop reintroduces every race the design was built to avoid. If a genuine need appears, re-litigate S3 like R5 says; do not add a "temporary" async call. | `check-layers.sh` grep |
+| **S4** | **Errors cross the Bridge boundary as `throws`, never as untyped codes, and never as crashes.** A `VERIFY` abort from the engine must never surface above Bridge. | Swift callers should not need to learn the C API's error convention; a crash crossing the boundary is indistinguishable from an engine bug at 2 a.m. | code review |
+| **S5** | **No caching `IOSurface` refs across pump turns.** Retain, assign to `layer.contents`, release — inside the callback. | The shim borrows the ref; frame swaps reclaim it. Holding one past the callback's turn is the only UAF still reachable in this design (R2 eliminated the rest). | code review |
+| **S6** | **C struct literals are built via helper functions — one per struct.** Field-order refreshes against `InputEvent.h` then live in exactly one place. | AK headers reshuffle on upstream syncs; the designated-initializer-order trap (see `Traps.md`) is survivable once, not once per call site. | code review |
+
+Formatting is a formatter's job, not this document's. When `Sources/` holds real code, add a
+`swift-format lint --strict` step to CI — and do not write a prose style guide to go with it.

@@ -53,6 +53,19 @@ Checking the header file alone trips `-Wpragma-once-outside-header` and reports 
 The header discusses `objc_msgSend` in prose; a naive grep matches the discussion. Preprocess
 (`clang -x c++ -E -P`) before grepping.
 
+**A green guard can audit a tree the build never read.**
+`Scripts/build.sh` builds from `Extern/ladybird/Build/release`, which is usually a *symlink* to a
+second checkout (reusing a 3 GB build tree beats a multi-hour rebuild). That tree records its own
+`CMAKE_HOME_DIRECTORY`. So `check-layers.sh` can pass over `Extern/ladybird` while the dylib came
+from somewhere else entirely. Measured state at the time of writing: submodule pinned at
+`bef0ffa5be`, build tree at `c0af4465f6` — a real divergence, not a hypothetical. *Fix: the guard
+compares the build tree's `CMAKE_HOME_DIRECTORY` against the checkout it audits, fails if the
+sources differ, and warns if they merely happen to agree.*
+
+**A stale remote-tracking ref will make you doubt a real push.**
+`git cat-file -t <sha>` against a submodule fails until `git fetch` — the ref is local and stale,
+the object genuinely absent. *Fix: fetch before concluding a push did not happen.*
+
 **The R7 fork-diff guard must diff against the merge-base, not `upstream/master`.**
 Otherwise every commit upstream has landed since this fork's HEAD looks like a local change and the
 guard reports hundreds of irrelevant files. Measured: `upstream/master` reported 300 files and

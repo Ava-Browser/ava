@@ -110,6 +110,57 @@ if grep -rqE '^import CLadybirdPort' "${REPO_ROOT}/Sources/LadybirdUI"; then
     fail_if "Layer: LadybirdUI must not import CLadybirdPort (go through LadybirdEngine)"
 fi
 
+# ---------------------------------------------------------------- S1: Unmanaged stays in Bridge
+# LadybirdBridge owns all Unmanaged<> plumbing; upward layers never see an opaque context pointer.
+bridge_src="${REPO_ROOT}/Sources/LadybirdBridge"
+um_hits="$(grep -rlE 'Unmanaged' "${REPO_ROOT}/Sources" 2>/dev/null | grep -v "^${bridge_src}/" || true)"
+if [[ -n "${um_hits}" ]]; then
+    echo "FAIL: S1: Unmanaged used outside Sources/LadybirdBridge:"
+    echo "${um_hits}" | sed 's/^/    /'
+    fail=1
+fi
+
+# ---------------------------------------------------------------- S3: no hidden thread hops
+# One thread, no exceptions: a DispatchQueue/Task.detached anywhere reintroduces every race R2/R5
+# were designed to eliminate. If a need appears, re-litigate S3 in Documentation/Rules.md.
+if grep -rqE 'DispatchQueue|Task\.detached' "${REPO_ROOT}/Sources"; then
+    grep -rnE 'DispatchQueue|Task\.detached' "${REPO_ROOT}/Sources" | sed 's/^/    /'
+    fail_if "S3: a thread hop appeared in Sources/ (the pump is main-thread; no exceptions)"
+fi
+
+# ---------------------------------------------------------------- provenance: audit what we build
+# The guard reads ${FORK}, but the build reads ${FORK}/Build/release — and that is a *symlink* to a
+# second checkout whenever one is reused instead of rebuilding for hours. Those two trees can and
+# do diverge: the symlinked build tree records its own CMAKE_HOME_DIRECTORY. A guard that audits a
+# tree the build never read is a green light over unknown code.
+BUILD_TREE="${FORK}/Build/release"
+if [[ -d "${BUILD_TREE}" ]]; then
+    build_home="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_TREE}/CMakeCache.txt" 2>/dev/null | head -1)"
+    fork_real="$(cd "${FORK}" && pwd -P)"
+    if [[ -n "${build_home}" && "${build_home}" != "${fork_real}" ]]; then
+        # The build tree belongs to another checkout. That is legitimate during bring-up (a 3GB,
+        # hours-long build is worth sharing), but it means a green guard does not vouch for the
+        # dylib. Verify the sources actually agree, then warn rather than fail.
+        drift=""
+        for dir in Libraries/LibPort Tests/LibWebView; do
+            [[ -d "${build_home}/${dir}" ]] || continue
+            if ! diff -rq "${fork_real}/${dir}" "${build_home}/${dir}" >/dev/null 2>&1; then
+                drift="${drift}\n    ${dir}"
+            fi
+        done
+        if [[ -n "${drift}" ]]; then
+            echo "FAIL: the build tree is a different checkout AND the sources have diverged:$(printf "${drift}")"
+            echo "    build tree: ${build_home}"
+            echo "    audited:    ${fork_real}"
+            fail=1
+        else
+            echo "WARN: build tree is a separate checkout (${build_home})."
+            echo "      Sources agree with ${fork_real} right now, but a green guard does not"
+            echo "      vouch for the built dylib. Rebuild in this checkout to close the gap."
+        fi
+    fi
+fi
+
 if [[ ${fail} -eq 0 ]]; then
     echo "OK: all contract rules hold"
 fi

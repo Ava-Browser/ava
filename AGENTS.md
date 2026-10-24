@@ -51,6 +51,8 @@ tool — and the rule then is: **hand-edit the description, never the output.**
 
 ## Do not
 
+- Do not introduce `Unmanaged` outside `LadybirdBridge` (S1; machine-checked).
+- Do not use `DispatchQueue` or `Task.detached` anywhere (S3; machine-checked).
 - Do not add a second event loop, a display link, or a redraw timer (R3, R5).
 - Do not crop or clone a surface-backed bitmap (R1).
 - Do not widen the C header's enums or change a struct layout without bumping a version (R4).
