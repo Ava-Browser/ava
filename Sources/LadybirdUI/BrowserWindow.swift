@@ -71,84 +71,66 @@ public struct BrowserWindow: View {
             // would re-run whenever SwiftUI re-appears the view.
             .task { model.start(homeURL: Self.launchURL) }
             .toolbar {
-                // One principal item holding the navigation cluster, the address field and New Tab.
-                //
-                // These were separate toolbar items, with the buttons in `.navigation` and the field in `.principal`.
-                // That pins the buttons to the window's left edge and centres the field independently, which opens a
-                // dead gap between them that grows with the window -- the header looked assembled rather than drawn.
-                // Safari centres the cluster as a unit and lets the buttons hug the field; one item reproduces that,
-                // and the field's own ceiling is what stops the group stretching.
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 10) {
-                        // Back/forward/reload read left to right in the order every macOS browser uses. Each is gated
-                        // on the engine's own answer (`canGoBack`/`canGoForward`, refreshed when navigation happens)
-                        // rather than a guessed history depth, so a button cannot disagree with what traversing would
-                        // actually do.
-                        HStack(spacing: 14) {
-                            Button(action: model.goBack) {
-                                Label("Back", systemImage: "chevron.backward")
-                            }
-                            .help("Go back (⌘[)")
-                            .disabled(!model.canGoBack)
-
-                            Button(action: model.goForward) {
-                                Label("Forward", systemImage: "chevron.forward")
-                            }
-                            .help("Go forward (⌘])")
-                            .disabled(!model.canGoForward)
-
-                            Button(action: model.reload) {
-                                Label("Reload", systemImage: "arrow.clockwise")
-                            }
-                            .help("Reload the page (⌘R)")
-                            .disabled(model.currentURL.isEmpty)
-                        }
-                        .buttonStyle(.borderless)
-                        .labelStyle(.iconOnly)
-
-                        // The icon sits *inside* the field, on the text's own leading edge, which is the macOS
-                        // convention (Safari, Mail, System Settings). A sibling HStack put the icon outside the border,
-                        // where it read as a separate control and the rounded border's own insets misaligned it against
-                        // the text.
-                        HStack(spacing: 6) {
-                            Image(systemName: model.isLoading ? "arrow.trianglehead.2.clockwise.rotate.90" : "globe")
-                                .font(.system(size: 12, weight: .regular))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 14, height: 14)
-                                .accessibilityHidden(true)
-
-                            TextField("Search or enter address", text: $model.addressText)
-                                .textFieldStyle(.plain)
-                                .focused($addressFocused)
-                                .onSubmit(model.submitAddress)
-                        }
-                        // The field draws its own capsule, always.
-                        //
-                        // It used to rely on the toolbar item's chrome, because a background of its own stacked a
-                        // second border inside the one macOS drew for a single-item `.principal`. Now the item holds
-                        // the whole cluster, no per-item chrome is drawn, and the field would otherwise have no
-                        // background at all -- which is what the screenshot showed. The condition is gone rather than
-                        // inverted: it was only ever there to avoid a second border, and there is no first one now.
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background { FieldChrome() }
-                        // Ceiling on the field, not on the group: without it the pill grows to fill the toolbar, and
-                        // the cluster stops reading as centred.
-                        .frame(minWidth: 240, idealWidth: 520, maxWidth: 620)
-                        .contentShape(Rectangle())
-                        .onTapGesture { addressFocused = true }
-
-                        // Trailing the field, where Safari puts it: `+` reads as "another page of this kind", so it
-                        // belongs next to the address it would open rather than in the sidebar's navigation group.
-                        Button {
-                            model.openTab()
-                        } label: {
-                            Label("New Tab", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderless)
-                        .labelStyle(.iconOnly)
-                        .help("New Tab (⌘T)")
+                // Navigation sits at the window's leading edge and the field takes the flexible middle slot, which is
+                // the arrangement Safari and Mail use. Grouping all of it into one principal item pulled the buttons
+                // in beside the field and left the outside edges empty, which is the opposite of native.
+                ToolbarItem(placement: .navigation) {
+                    Button(action: model.goBack) {
+                        Label("Back", systemImage: "chevron.backward")
                     }
+                    .help("Go back (⌘[)")
+                    .disabled(!model.canGoBack)
+                }
+
+                ToolbarItem(placement: .navigation) {
+                    Button(action: model.goForward) {
+                        Label("Forward", systemImage: "chevron.forward")
+                    }
+                    .help("Go forward (⌘])")
+                    .disabled(!model.canGoForward)
+                }
+
+                ToolbarItem(placement: .navigation) {
+                    Button(action: model.reload) {
+                        Label("Reload", systemImage: "arrow.clockwise")
+                    }
+                    .help("Reload the page (⌘R)")
+                    .disabled(model.currentURL.isEmpty)
+                }
+
+                // The icon sits *inside* the field, on the text's own leading edge, which is the macOS convention
+                // (Safari, Mail, System Settings). A sibling HStack put the icon outside the border, where it read as a
+                // separate control and the rounded border's own insets misaligned it against the text.
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 6) {
+                        Image(systemName: model.isLoading ? "arrow.trianglehead.2.clockwise.rotate.90" : "globe")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14, height: 14)
+                            .accessibilityHidden(true)
+
+                        TextField("Search or enter address", text: $model.addressText)
+                            .textFieldStyle(.plain)
+                            .focused($addressFocused)
+                            .onSubmit(model.submitAddress)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background { FieldChrome() }
+                    // Caps the field so it centres like Safari's instead of stretching across the whole toolbar.
+                    .frame(minWidth: 240, idealWidth: 520, maxWidth: 620)
+                    .contentShape(Rectangle())
+                    .onTapGesture { addressFocused = true }
+                }
+
+                // Trailing the field, where Safari puts it: `+` reads as "another page of this kind".
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        model.openTab()
+                    } label: {
+                        Label("New Tab", systemImage: "plus")
+                    }
+                    .help("New Tab (⌘T)")
                 }
             }
             // The model is per-window state, so its shortcuts live here rather than in `Commands`. ⌘W, ⌘Q, ⌘M and
