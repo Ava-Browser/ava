@@ -90,7 +90,7 @@ struct SpacesPersistenceTests {
 
         // Starts with 1 default space
         #expect(manager.spaces.count == 1)
-        let spaceA = manager.activeWorkspace
+        _ = manager.activeWorkspace
 
         // Add essential tab
         let essential = manager.addTab(workspaceID: nil, tier: .essential, url: "https://essential.com")
@@ -105,9 +105,9 @@ struct SpacesPersistenceTests {
         manager.selectWorkspace(id: spaceB.id)
         #expect(manager.activeWorkspaceID == spaceB.id)
 
-        let pinned = manager.addTab(workspaceID: spaceB.id, tier: .pinned, url: "https://pinned.com")
+        _ = manager.addTab(workspaceID: spaceB.id, tier: .pinned, url: "https://pinned.com")
         let normal1 = manager.addTab(workspaceID: spaceB.id, tier: .normal, url: "https://normal1.com")
-        let normal2 = manager.addTab(workspaceID: spaceB.id, tier: .normal, url: "https://normal2.com")
+        _ = manager.addTab(workspaceID: spaceB.id, tier: .normal, url: "https://normal2.com")
 
         #expect(manager.activePinnedTabs.count == 1)
         #expect(manager.activeNormalTabs.count == 2)
@@ -235,5 +235,91 @@ struct SpaceCyclingTests {
         #expect(model.spaces.count == 1)
         #expect(model.activeWorkspace.id == space1.id)
         #expect(model.tabs.filter { $0.workspaceID == space2.id }.isEmpty)
+    }
+
+    @Test("Two-finger horizontal trackpad swipe navigation")
+    func trackpadSwipe() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+        let model = BrowserModel(spacesManager: manager)
+
+        let space1 = model.activeWorkspace
+        model.createWorkspace(name: "Space 2")
+        let space2 = model.activeWorkspace
+
+        #expect(model.activeWorkspace.id == space2.id)
+
+        // deltaX < 0 is swipe left (next workspace)
+        model.webView.onSwipeSpace?(-50.0)
+        #expect(model.activeWorkspace.id == space1.id)
+
+        // deltaX > 0 is swipe right (previous workspace)
+        model.webView.onSwipeSpace?(50.0)
+        #expect(model.activeWorkspace.id == space2.id)
+    }
+
+    @Test("Opening tab via openTab creates it in active space (⌘T)")
+    func openTabInActiveSpace() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+        let model = BrowserModel(spacesManager: manager)
+
+        model.createWorkspace(name: "Work")
+        let workSpace = model.activeWorkspace
+
+        let newTab = model.openTab(url: "https://work.example.com")
+        #expect(newTab?.workspaceID == workSpace.id)
+        #expect(model.selectedTabID == newTab?.id)
+        #expect(model.activeNormalTabs.contains(where: { $0.id == newTab?.id }))
+    }
+
+    @Test("Closing selected tab via closeSelectedTab (⌘W)")
+    func closeSelectedTabShortcut() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+        let model = BrowserModel(spacesManager: manager)
+
+        let tab1 = model.openTab(url: "https://example.com/1")!
+        let tab2 = model.openTab(url: "https://example.com/2")!
+        #expect(model.selectedTabID == tab2.id)
+
+        model.closeSelectedTab()
+        #expect(model.selectedTabID == tab1.id)
+        #expect(!model.tabs.contains(where: { $0.id == tab2.id }))
+    }
+
+    @Test("Workspace theme gradient spec is retained and persistent")
+    func workspaceThemeGradient() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+        let model = BrowserModel(spacesManager: manager)
+
+        let wineGradient = GradientSpec(startColorHex: "#881337", endColorHex: "#4C0519")
+        model.createWorkspace(name: "Wine Space", icon: "sparkles", theme: wineGradient)
+
+        #expect(model.activeWorkspace.theme == wineGradient)
+        #expect(store.state?.spaces.first(where: { $0.name == "Wine Space" })?.theme == wineGradient)
+    }
+
+    @Test("Direct jump to space by index 0..8 (⌘⌥1..9)")
+    func directSpaceJump() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+        let model = BrowserModel(spacesManager: manager)
+
+        for i in 2...5 {
+            model.createWorkspace(name: "Space \(i)")
+        }
+        #expect(model.spaces.count == 5)
+
+        model.selectWorkspace(at: 0)
+        #expect(model.activeWorkspace.id == model.spaces[0].id)
+
+        model.selectWorkspace(at: 3)
+        #expect(model.activeWorkspace.id == model.spaces[3].id)
+
+        // Out of bounds index is ignored
+        model.selectWorkspace(at: 99)
+        #expect(model.activeWorkspace.id == model.spaces[3].id)
     }
 }

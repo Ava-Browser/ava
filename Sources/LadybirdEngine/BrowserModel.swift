@@ -47,6 +47,15 @@ public final class BrowserModel {
         self.spacesManager = spacesManager
         webView = PortWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         loadInitialTabsFromGraph()
+        webView.onSwipeSpace = { [weak self] deltaX in
+            MainActor.assumeIsolated {
+                if deltaX < 0 {
+                    self?.selectNextWorkspace()
+                } else {
+                    self?.selectPreviousWorkspace()
+                }
+            }
+        }
     }
 
     private func loadInitialTabsFromGraph() {
