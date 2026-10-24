@@ -28,7 +28,12 @@ MSG
     exit 1
 fi
 
-export LADYBIRD_BINARY_PATH="${BUILD_DIR}/bin/Ladybird.app/Contents/MacOS"
-export DYLD_LIBRARY_PATH="${BUILD_DIR}/lib"
+# Resolve symlinks before handing the path to the engine. The renderer's seatbelt profile grants read access to
+# s_ladybird_resource_root, which the engine derives from this path; a symlinked build tree yields a path the sandbox
+# did not grant, so every font stat fails with EPERM and WebContent aborts on a missing default font.
+BINARY_PATH="$(cd "${BUILD_DIR}/bin/Ladybird.app/Contents/MacOS" && pwd -P)"
+
+export LADYBIRD_BINARY_PATH="${BINARY_PATH}"
+export DYLD_LIBRARY_PATH="$(cd "${BUILD_DIR}/lib" && pwd -P)"
 
 exec "$(swift build --show-bin-path)/LadybirdMac" "$@"
