@@ -49,11 +49,13 @@ public struct BrowserWindow: View {
                     )
                     .padding(.leading, 2)
                     .padding(.trailing, 8)
-                    .padding(.top, 6)
+                    .padding(.top, 8)
                     .padding(.bottom, 8)
             }
+            .ignoresSafeArea()
             .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
+        .ignoresSafeArea()
         .frame(minWidth: 700, minHeight: 400)
         .sheet(item: Binding(
             get: { model.selectedTab?.dialog },
@@ -63,11 +65,10 @@ public struct BrowserWindow: View {
                 DialogSheet(dialog: dialog, tab: tab, model: model)
             }
         }
-        .navigationTitle(windowTitle)
-        .modifier(TitleHiddenInToolbar())
         .task {
             model.start(homeURL: Self.launchURL)
-            model.webView.onSwipeSpace = { deltaX in
+            model.webView.onSwipeSpace = { [weak model] deltaX in
+                guard let model else { return }
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     if deltaX < 0 {
                         model.selectNextWorkspace()
@@ -75,12 +76,6 @@ public struct BrowserWindow: View {
                         model.selectPreviousWorkspace()
                     }
                 }
-            }
-        }
-        .toolbar(removing: .sidebarToggle)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Spacer().frame(width: 0)
             }
         }
         .background {
@@ -164,10 +159,7 @@ extension Color {
         if cleanHex.hasPrefix("#") {
             cleanHex.removeFirst()
         }
-        if cleanHex.count == 3 {
-            cleanHex = cleanHex.map { "\($0)\($0)" }.joined()
-        }
-        guard (cleanHex.count == 6 || cleanHex.count == 8), let rgb = UInt64(cleanHex.prefix(6), radix: 16) else {
+        guard cleanHex.count == 6, let rgb = UInt64(cleanHex, radix: 16) else {
             self = defaultColor
             return
         }

@@ -83,6 +83,12 @@ public final class PortWebView: NSView {
         // thread, inside the run loop that owns presentation.
         if let window, !hasOrderedFront {
             hasOrderedFront = true
+
+            // Arc window chrome: full-size content view extending into the titlebar area
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.fullSizeContentView)
+
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
         }

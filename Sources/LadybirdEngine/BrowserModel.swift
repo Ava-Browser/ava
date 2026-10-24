@@ -499,6 +499,12 @@ public final class BrowserModel {
         load(selectedTab.currentURL)
     }
 
+    public func copyCurrentURL() {
+        guard !currentURL.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(currentURL, forType: .string)
+    }
+
     public func load(_ input: String) {
         guard let selectedTab else { return }
         load(input, in: selectedTab)
