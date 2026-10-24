@@ -323,3 +323,41 @@ struct SpaceCyclingTests {
         #expect(model.activeWorkspace.id == model.spaces[3].id)
     }
 }
+
+@Suite("Unload Workspace Policy")
+@MainActor
+struct UnloadWorkspaceTests {
+    final class MemoryStore: SpacesStore, @unchecked Sendable {
+        var state: SpacesStoreState?
+        func load() -> SpacesStoreState? { state }
+        func save(_ state: SpacesStoreState) { self.state = state }
+    }
+
+    @Test("Unloading an inactive workspace resets engine tab handles without removing descriptors")
+    func unloadWorkspace() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+        let model = BrowserModel(spacesManager: manager)
+
+        let space1 = model.activeWorkspace
+        let tab1 = model.openTab(url: "https://space1.com")!
+        tab1.engineID = 100 // Simulate loaded handle
+
+        model.createWorkspace(name: "Space 2")
+        let space2 = model.activeWorkspace
+        let tab2 = model.openTab(url: "https://space2.com")!
+        tab2.engineID = 200
+
+        #expect(tab1.isLoaded)
+        #expect(tab2.isLoaded)
+
+        // Unload inactive space1
+        model.unloadWorkspace(space1)
+        #expect(!tab1.isLoaded)
+        #expect(tab1.engineID == nil)
+        #expect(tab2.isLoaded) // active space tab unchanged
+
+        // Descriptors and count survive
+        #expect(model.tabs.count == 3) // space1 initial blank, space1.com, space2.com
+    }
+}

@@ -201,4 +201,10 @@ phases; none implied by this TDD.
 
 - 2026-10-24 — Durable-graph/ephemeral-engine split adopted as the governing principle
   (advisor session); deadlines: model split precedes any space UI.
-- (pending, M5.5) — containers probe verdict.
+- 2026-10-24 (M5.5 probe verdict: RED) — Verified against `LibWebView/BrowsingSession.cpp` and `Application.cpp`:
+  1. `BrowsingSession::create(IsPrivate::Yes)` sets in-memory `CookieJar::create(IsPrivate::Yes)` and `StorageJar::create()`.
+  2. Non-private sessions rely on the single `m_default_session` initialized with the process-wide SQLite database in `Application::initialize`.
+  3. Private/named secondary sessions are in-memory only and do not persist jars across process restarts.
+  Verdict: RED per §5 protocol. Per R7, containers require an upstream-shaped patch to persist named BrowsingSessions under separate disk jars rather than silently faking cookie isolation in memory. Announced as deferred per R7 contract rules.
+
+---

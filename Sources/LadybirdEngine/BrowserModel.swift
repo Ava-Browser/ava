@@ -297,6 +297,15 @@ public final class BrowserModel {
         app?.destroyTab(engineID)
     }
 
+    /// Unloads all tabs in an inactive workspace to reclaim WebContent processes (M6 unload policy).
+    public func unloadWorkspace(_ workspace: Workspace) {
+        guard workspace.id != spacesManager.activeWorkspaceID else { return }
+        let spaceTabs = tabs.filter { $0.workspaceID == workspace.id }
+        for tab in spaceTabs {
+            unloadTab(tab)
+        }
+    }
+
     @discardableResult
     public func openTab(url: String = "about:blank", tier: TabTier = .normal) -> BrowserTab? {
         let wsID = (tier == .essential) ? nil : spacesManager.activeWorkspaceID

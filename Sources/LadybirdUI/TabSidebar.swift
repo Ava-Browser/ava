@@ -472,7 +472,15 @@ private struct ArcSpaceSwitcherDock: View {
                     .buttonStyle(.plain)
                     .help(space.name)
                     .contextMenu {
+                        if space.id != model.activeWorkspace.id {
+                            Button("Unload Space Tabs") {
+                                withAnimation(.snappy(duration: 0.2)) {
+                                    model.unloadWorkspace(space)
+                                }
+                            }
+                        }
                         if model.spaces.count > 1 {
+                            Divider()
                             Button("Delete Space", role: .destructive) {
                                 withAnimation(.snappy(duration: 0.2)) {
                                     model.removeWorkspace(space)
