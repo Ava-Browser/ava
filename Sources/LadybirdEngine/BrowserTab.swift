@@ -80,6 +80,11 @@ public final class BrowserTab: Identifiable {
 
     public var isLoaded: Bool { engineID != nil }
 
+    public var faviconURL: URL? {
+        guard let host = URL(string: currentURL)?.host(), !host.isEmpty else { return nil }
+        return URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=64")
+    }
+
     public var title: String {
         if !customTitle.isEmpty {
             return customTitle

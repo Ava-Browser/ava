@@ -360,9 +360,26 @@ private struct EssentialTile: View {
                     .fill(isSelected ? Color.primary.opacity(0.22) : (isHovering ? Color.primary.opacity(0.12) : Color.primary.opacity(0.06)))
                     .frame(height: 40)
 
-                Image(systemName: tab.isLoading ? "circle.dotted" : "globe")
-                    .font(.system(size: 16))
-                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                if let faviconURL = tab.faviconURL {
+                    AsyncImage(url: faviconURL) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 20, height: 20)
+                                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        default:
+                            Image(systemName: tab.isLoading ? "circle.dotted" : "globe")
+                                .font(.system(size: 16))
+                                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                        }
+                    }
+                } else {
+                    Image(systemName: tab.isLoading ? "circle.dotted" : "globe")
+                        .font(.system(size: 16))
+                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                }
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -387,10 +404,28 @@ private struct ArcTabRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: tab.isLoading ? "circle.dotted" : (tab.isLoaded ? "globe" : "cloud"))
-                .font(.system(size: 11))
-                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                .frame(width: 14, height: 14)
+            if let faviconURL = tab.faviconURL {
+                AsyncImage(url: faviconURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 14, height: 14)
+                            .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                    default:
+                        Image(systemName: tab.isLoading ? "circle.dotted" : (tab.isLoaded ? "globe" : "cloud"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                            .frame(width: 14, height: 14)
+                    }
+                }
+            } else {
+                Image(systemName: tab.isLoading ? "circle.dotted" : (tab.isLoaded ? "globe" : "cloud"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                    .frame(width: 14, height: 14)
+            }
 
             Text(tab.title)
                 .font(.system(size: 12, weight: isSelected ? .medium : .regular))
