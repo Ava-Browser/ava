@@ -15,13 +15,33 @@ public struct BrowserWindow: View {
 
     public init() {}
 
+    /// The page to open at launch.
+    ///
+    /// `--url <value>` only, and note the prefix: a *bare* positional argument makes AppKit treat the launch as a
+    /// document-open request, and SwiftUI then never creates a window at all (measured — the process runs, the window
+    /// does not exist). Requiring the flag keeps that path untouched.
+    ///
+    /// This exists because there is otherwise no way to point the app at a page without driving the UI, which a
+    /// benchmark or a regression script cannot do reliably.
+    private static var launchURL: String {
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--url"), args.index(after: i) < args.endIndex {
+            return args[args.index(after: i)]
+        }
+        // Tolerate `--url=<value>` too, which is what most callers reach for first.
+        for arg in args where arg.hasPrefix("--url=") {
+            return String(arg.dropFirst("--url=".count))
+        }
+        return "https://example.com"
+    }
+
     public var body: some View {
         content
             .frame(minWidth: 480, minHeight: 320)
             .navigationTitle(windowTitle)
             // `task` runs once per view identity, which is exactly once per window. Starting the engine from `onAppear`
             // would re-run whenever SwiftUI re-appears the view.
-            .task { model.start() }
+            .task { model.start(homeURL: Self.launchURL) }
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     Button(action: model.reload) {
