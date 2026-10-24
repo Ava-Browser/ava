@@ -28,6 +28,10 @@ public final class PortWebView: NSView {
     /// The view must be first responder for key events to arrive at all.
     public override var acceptsFirstResponder: Bool { true }
 
+    /// Which engine tab this view is currently showing. Owned by the model; the view only uses it to label benchmarks,
+    /// so that a frame logged during a tab switch is attributable to the right page.
+    public var currentTabID: UInt64 = 0
+
     private var lastViewport: (width: Int32, height: Int32, scale: Double)?
 
     public override init(frame: NSRect) {
