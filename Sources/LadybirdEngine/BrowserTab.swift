@@ -14,6 +14,33 @@
 import Foundation
 import Observation
 
+/// A dialog the engine is blocked on for one tab.
+///
+/// `id` exists so SwiftUI can tell a re-presented dialog apart from the previous one: without it, a second alert on the
+/// same tab would reuse the sheet's identity and the presented text would not update.
+public enum TabDialog: Identifiable, Equatable {
+    case alert(id: UInt64, message: String)
+    case confirm(id: UInt64, message: String)
+    case prompt(id: UInt64, message: String, defaultText: String)
+    case beforeUnload(id: UInt64, source: String)
+
+    public var id: UInt64 {
+        switch self {
+        case let .alert(id, _), let .confirm(id, _), let .prompt(id, _, _), let .beforeUnload(id, _):
+            return id
+        }
+    }
+
+    public var message: String {
+        switch self {
+        case let .alert(_, message), let .confirm(_, message), let .prompt(_, message, _):
+            return message
+        case let .beforeUnload(_, source):
+            return "Leave this page?\n\nThe page reported: \(source)"
+        }
+    }
+}
+
 @MainActor
 @Observable
 public final class BrowserTab: Identifiable {
@@ -21,6 +48,8 @@ public final class BrowserTab: Identifiable {
     public let id: UInt64
     public private(set) var currentURL: String = ""
     public private(set) var isLoading: Bool = false
+    /// The dialog this tab's page is stopped on, if any. At most one: the engine blocks the page, so it cannot ask twice.
+    public private(set) var dialog: TabDialog?
 
     init(id: UInt64) {
         self.id = id
@@ -44,5 +73,13 @@ public final class BrowserTab: Identifiable {
 
     func setLoading(_ loading: Bool) {
         isLoading = loading
+    }
+
+    func present(dialog: TabDialog) {
+        self.dialog = dialog
+    }
+
+    func clearDialog() {
+        dialog = nil
     }
 }

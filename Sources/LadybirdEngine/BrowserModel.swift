@@ -46,6 +46,9 @@ public final class BrowserModel {
     /// model would build a second `PortApp` and abort. Holding it here makes the constraint explicit and shared, which
     /// is what the engine actually requires.
     @ObservationIgnored private static var processApp: PortApp?
+    /// Monotonic id for presented dialogs. Two alerts on the same tab must not share a sheet identity, or the second
+    /// would reuse the first's presented content instead of updating it.
+    @ObservationIgnored private static var nextDialogID: UInt64 = 1
 
     @ObservationIgnored public let webView: PortWebView
     @ObservationIgnored private var app: PortApp?
@@ -81,6 +84,22 @@ public final class BrowserModel {
         }
         callbacks.onReadyToPaint = { [weak self] tab in
             MainActor.assumeIsolated { self?.handlePaint(tab) }
+        }
+
+        // All four or none: the ABI auto-answers a dialog whose callback is absent, so a partial set would silently
+        // auto-answer some and hang the page on the rest. The engine is blocked inside each of these, so the sheet is
+        // the only thing that unblocks that tab.
+        callbacks.onRequestAlert = { [weak self] tab, message in
+            MainActor.assumeIsolated { self?.presentDialog(.alert(id: BrowserModel.takeDialogID(), message: message), for: tab) }
+        }
+        callbacks.onRequestConfirm = { [weak self] tab, message in
+            MainActor.assumeIsolated { self?.presentDialog(.confirm(id: BrowserModel.takeDialogID(), message: message), for: tab) }
+        }
+        callbacks.onRequestPrompt = { [weak self] tab, message, defaultText in
+            MainActor.assumeIsolated { self?.presentDialog(.prompt(id: BrowserModel.takeDialogID(), message: message, defaultText: defaultText), for: tab) }
+        }
+        callbacks.onRequestBeforeUnload = { [weak self] tab, source in
+            MainActor.assumeIsolated { self?.presentDialog(.beforeUnload(id: BrowserModel.takeDialogID(), source: source), for: tab) }
         }
 
         // One engine per process: constructing a second asserts inside WebView::Application. But adopting an existing
@@ -189,6 +208,13 @@ public final class BrowserModel {
     /// survivor even though the ids may look unchanged to the fast-path check.
     public func select(_ tab: BrowserTab, force: Bool) {
         if !force, tab.id == selectedTabID, webView.currentTabID == tab.id { return }
+
+        // Leaving the current tab: answer its dialog first. The sheet lives on the tab that asked, so once that tab is
+        // not visible the user has no way to reach it, and the page would stay stopped.
+        if let leaving = selectedTab, leaving.id != tab.id {
+            answerPendingDialog(on: leaving)
+        }
+
         selectedTabID = tab.id
         webView.currentTabID = tab.id
         addressText = tab.currentURL
@@ -216,6 +242,10 @@ public final class BrowserModel {
             return nil
         }()
 
+        // Answer before anything else: the page is stopped until it gets a reply, and the engine tab is about to be
+        // destroyed. With dialogs installed this is the ordering the brief requires, not an optimisation.
+        answerPendingDialog(on: tab)
+
         tabs.remove(at: index)
 
         if let neighbour {
@@ -239,6 +269,66 @@ public final class BrowserModel {
     }
 
     // MARK: - Navigation
+
+    // MARK: - Dialogs
+
+    private static func takeDialogID() -> UInt64 {
+        defer { nextDialogID += 1 }
+        return nextDialogID
+    }
+
+    private func presentDialog(_ dialog: TabDialog, for tabID: UInt64) {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else {
+            // The tab went away between the engine asking and us handling it. Answer immediately rather than leaving a
+            // page stopped forever — a tab that cannot answer must not hold the engine.
+            answerImmediately(dialog, for: tabID)
+            return
+        }
+        tab.present(dialog: dialog)
+    }
+
+    /// Answers a dialog with its safe default. Used when the tab is gone, or when a dialog must be cleared before the
+    /// tab switches away or closes.
+    private func answerImmediately(_ dialog: TabDialog, for tabID: UInt64) {
+        guard let app else { return }
+        switch dialog {
+        case .alert:
+            app.answerAlert(in: tabID)
+        case .confirm:
+            app.answerConfirm(in: tabID, accept: false)
+        case .prompt:
+            app.answerPrompt(in: tabID, response: nil)
+        case .beforeUnload:
+            // Inverted sense: true allows the navigation, which is the safe default for a dialog nobody is present for.
+            app.answerBeforeUnload(in: tabID, accept: true)
+        }
+    }
+
+    /// The host's answer from a presented sheet.
+    public func answer(_ dialog: TabDialog, on tab: BrowserTab, accepted: Bool, promptText: String? = nil) {
+        guard let app else { return }
+        tab.clearDialog()
+        switch dialog {
+        case .alert:
+            app.answerAlert(in: tab.id)
+        case .confirm:
+            app.answerConfirm(in: tab.id, accept: accepted)
+        case .prompt:
+            app.answerPrompt(in: tab.id, response: accepted ? (promptText ?? "") : nil)
+        case .beforeUnload:
+            app.answerBeforeUnload(in: tab.id, accept: accepted)
+        }
+    }
+
+    /// Answers any pending dialog on `tab` with its safe default.
+    ///
+    /// Called before switching away from or closing a tab. The page is stopped until it gets a reply, so a tab that
+    /// keeps a dialog while becoming invisible would be wedged with no way for the user to reach the sheet.
+    private func answerPendingDialog(on tab: BrowserTab) {
+        guard let dialog = tab.dialog else { return }
+        tab.clearDialog()
+        answerImmediately(dialog, for: tab.id)
+    }
 
     // MARK: - History
 

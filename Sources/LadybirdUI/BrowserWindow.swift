@@ -11,6 +11,7 @@ import SwiftUI
 
 public struct BrowserWindow: View {
     @State private var model = BrowserModel()
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @FocusState private var addressFocused: Bool
 
     public init() {}
@@ -36,17 +37,31 @@ public struct BrowserWindow: View {
     }
 
     public var body: some View {
-        // One workspace: the sidebar is the only tab list, and the page sits beside it. Not a NavigationSplitView —
-        // this window has exactly two columns and no collapse behaviour, and a split view would add a sidebar toggle,
-        // column-width persistence and a divider style the brief did not ask for.
-        HSplitView {
+        // One workspace: the sidebar is the only tab list, and the page sits beside it.
+        //
+        // This was an HSplitView, on the grounds that the window had no collapse behaviour and a split view would only
+        // add chrome nobody asked for. The sidebar now collapses, and that reverses the trade: the header toggle, the
+        // ⌃⌘S shortcut, the animated width change, the material behind the list and the collapsed state that stops
+        // taking keystrokes are all behaviours an HSplitView does not have and would each have to be rebuilt by hand —
+        // probably subtly wrong, since the collapsed case is the one nobody remembers to test.
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             TabSidebar(model: model)
-                .frame(minWidth: 170, idealWidth: 210, maxWidth: 320)
-
+                .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 320)
+        } detail: {
             content
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 620, minHeight: 320)
+            // A dialog lives on the tab that asked, so the sheet is attached to whichever tab is selected. The model
+            // answers it before switching away or closing, so it can never be presented for an invisible tab.
+            .sheet(item: Binding(
+                get: { model.selectedTab?.dialog },
+                set: { _ in }
+            )) { dialog in
+                if let tab = model.selectedTab {
+                    DialogSheet(dialog: dialog, tab: tab, model: model)
+                }
+            }
             // NB: the title still reaches the Dock and the Window menu; it is only kept out of the toolbar, where it
             // repeated what the address field already shows. `toolbar(removing:)` is macOS 15+, and the package
             // targets 14.4, so older systems keep the title — cosmetic only, nothing depends on its absence.

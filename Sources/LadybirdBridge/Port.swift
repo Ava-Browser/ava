@@ -46,14 +46,39 @@ public struct PortCallbacks {
     public var onURLChange: (UInt64, String) -> Void
     public var onLoadFinish: (UInt64, String) -> Void
 
+    // The four blocking dialogs. Every one MUST be answered through `PortApp`'s matching `answer*` call: the page's
+    // script is stopped until it is, and the stall is inside WebContent, so a host that ignores one looks healthy while
+    // the page is wedged. Installing any of these without answering is worse than leaving all of them nil — with no
+    // callback the engine answers itself.
+    public var onRequestAlert: ((UInt64, String) -> Void)?
+    public var onRequestConfirm: ((UInt64, String) -> Void)?
+    /// `defaultText` is what the prompt's field starts with.
+    public var onRequestPrompt: ((UInt64, String, String) -> Void)?
+    /// `accept: true` ALLOWS the navigation. The sense is inverted relative to the name — see the header.
+    public var onRequestBeforeUnload: ((UInt64, String) -> Void)?
+
     public init(
         onReadyToPaint: @escaping (UInt64) -> Void = { _ in },
         onURLChange: @escaping (UInt64, String) -> Void = { _, _ in },
-        onLoadFinish: @escaping (UInt64, String) -> Void = { _, _ in }
+        onLoadFinish: @escaping (UInt64, String) -> Void = { _, _ in },
+        onRequestAlert: ((UInt64, String) -> Void)? = nil,
+        onRequestConfirm: ((UInt64, String) -> Void)? = nil,
+        onRequestPrompt: ((UInt64, String, String) -> Void)? = nil,
+        onRequestBeforeUnload: ((UInt64, String) -> Void)? = nil
     ) {
         self.onReadyToPaint = onReadyToPaint
         self.onURLChange = onURLChange
         self.onLoadFinish = onLoadFinish
+        self.onRequestAlert = onRequestAlert
+        self.onRequestConfirm = onRequestConfirm
+        self.onRequestPrompt = onRequestPrompt
+        self.onRequestBeforeUnload = onRequestBeforeUnload
+    }
+
+    /// Whether all four are installed. The ABI treats a nil callback as "engine answers itself", so the host must
+    /// install all four or none; a partial set would auto-answer some dialogs and hang on others.
+    public var installsAllDialogs: Bool {
+        onRequestAlert != nil && onRequestConfirm != nil && onRequestPrompt != nil && onRequestBeforeUnload != nil
     }
 }
 
@@ -109,6 +134,32 @@ public final class PortApp {
             MainActor.assumeIsolated { context.callbacks.onLoadFinish(tab, string) }
         }
 
+        // Dialogs. Installed only when the host supplied all four — a partial set would let the engine auto-answer some
+        // and leave the page stopped on the rest, which is the one failure mode worse than absence.
+        if callbacks.installsAllDialogs {
+            c.on_request_alert = { raw, tab, message, len in
+                guard let context = CallbackContext.resolve(raw) else { return }
+                let string = decode(message, len)
+                MainActor.assumeIsolated { context.callbacks.onRequestAlert?(tab, string) }
+            }
+            c.on_request_confirm = { raw, tab, message, len in
+                guard let context = CallbackContext.resolve(raw) else { return }
+                let string = decode(message, len)
+                MainActor.assumeIsolated { context.callbacks.onRequestConfirm?(tab, string) }
+            }
+            c.on_request_prompt = { raw, tab, message, len, defaultText, defaultLen in
+                guard let context = CallbackContext.resolve(raw) else { return }
+                let text = decode(message, len)
+                let initial = decode(defaultText, defaultLen)
+                MainActor.assumeIsolated { context.callbacks.onRequestPrompt?(tab, text, initial) }
+            }
+            c.on_request_before_unload = { raw, tab, source, len in
+                guard let context = CallbackContext.resolve(raw) else { return }
+                let string = decode(source, len)
+                MainActor.assumeIsolated { context.callbacks.onRequestBeforeUnload?(tab, string) }
+            }
+        }
+
         guard let handle = argv0.withCString({ LbAppCreate($0, &c) }) else { return nil }
         self.handle = handle
     }
@@ -142,6 +193,38 @@ public final class PortApp {
     public func destroyTab(_ tab: UInt64) {
         guard let handle else { return }
         LbTabDestroy(handle, tab)
+    }
+
+    // MARK: - Dialog answers
+    //
+    // Each of these answers one pending dialog and is what unblocks the page. Calling one with no dialog pending is a
+    // no-op in the shim, so a tab being torn down can be answered and closed without checking first.
+
+    public func answerAlert(in tab: UInt64) {
+        guard let handle else { return }
+        LbTabAnswerAlert(handle, tab)
+    }
+
+    /// `accept: false` declines, which is the safe default.
+    public func answerConfirm(in tab: UInt64, accept: Bool) {
+        guard let handle else { return }
+        LbTabAnswerConfirm(handle, tab, accept ? 1 : 0)
+    }
+
+    /// `response: nil` is Cancel. An empty string is "accepted with no text" — a different outcome, kept distinct.
+    public func answerPrompt(in tab: UInt64, response: String?) {
+        guard let handle else { return }
+        guard let response else {
+            LbTabAnswerPrompt(handle, tab, nil, 0)
+            return
+        }
+        response.withCString { LbTabAnswerPrompt(handle, tab, $0, response.utf8.count) }
+    }
+
+    /// `accept: true` ALLOWS the navigation, not blocks it.
+    public func answerBeforeUnload(in tab: UInt64, accept: Bool) {
+        guard let handle else { return }
+        LbTabAnswerBeforeUnload(handle, tab, accept ? 1 : 0)
     }
 
     public func load(_ url: String, in tab: UInt64) {
