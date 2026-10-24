@@ -9,6 +9,9 @@
 import AppKit
 import LadybirdBridge
 
+// S2: the annotation is explicit rather than inherited from NSView, so the invariant is stated where it is enforced
+// rather than implied by an AppKit detail that could change.
+@MainActor
 public final class PortWebView: NSView {
     private let contentLayer = CALayer()
 
@@ -79,9 +82,9 @@ public final class PortWebView: NSView {
             width: paintedWidth / surfaceWidth,
             height: paintedHeight / surfaceHeight
         )
-        // The pointer *is* the IOSurfaceRef the shim handed across. Taking it unretained is safe because the layer
-        // retains it on assignment, on this same stack.
-        contentLayer.contents = Unmanaged<CFTypeRef>.fromOpaque(surface.iosurface).takeUnretainedValue()
+        // Borrowed from the engine; the layer retains it on assignment, on this same stack (S5). The cast itself lives
+        // in Bridge (S1).
+        contentLayer.contents = surface.ref
         CATransaction.commit()
     }
 

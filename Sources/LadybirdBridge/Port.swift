@@ -7,7 +7,9 @@
  */
 
 import CLadybirdPort
+import CoreFoundation
 import Foundation
+import IOSurface
 
 /// A frame the engine has published.
 ///
@@ -26,6 +28,15 @@ public struct PortSurface {
         self.paintedHeight = paintedHeight
         self.surfaceWidth = surfaceWidth
         self.surfaceHeight = surfaceHeight
+    }
+
+    /// The `void*` crossed the ABI as a bare handle, so this cast is the one place it becomes a CF type — S1 keeps it
+    /// in Bridge so the upward layers never spell `Unmanaged`.
+    ///
+    /// Borrowed, not owned: the shim hands out a reference it still owns, and a frame swap reclaims it. Assigning this
+    /// to `CALayer.contents` on the same call stack is what retains it (S5).
+    public var ref: IOSurfaceRef {
+        Unmanaged<IOSurfaceRef>.fromOpaque(iosurface).takeUnretainedValue()
     }
 }
 

@@ -6,6 +6,7 @@
  * No window and no engine: this target is the reason the bridge must not import AppKit.
  */
 
+import IOSurface
 import Testing
 
 @testable import LadybirdBridge
@@ -45,5 +46,29 @@ struct URLNormalizationTests {
     func unknownScheme() {
         #expect(PortApp.normalizedURL("javascript:alert(1)") == "javascript:alert(1)")
         #expect(PortApp.normalizedURL("ftp://example.com") == "https://ftp://example.com")
+    }
+}
+
+@Suite("Surface ref conversion")
+struct SurfaceRefTests {
+    /// The one place a bare `void*` becomes a CF type (S1). Round-trips a real IOSurface so the cast is exercised
+    /// rather than merely compiled.
+    @Test("The borrowed pointer resolves back to the same IOSurface")
+    func refRoundTrip() {
+        let surface = IOSurface(properties: [
+            .width: 4,
+            .height: 4,
+            .bytesPerElement: 4,
+        ])
+        let original = try! #require(surface)
+
+        let portSurface = PortSurface(
+            iosurface: Unmanaged.passUnretained(original).toOpaque(),
+            paintedWidth: 4,
+            paintedHeight: 4,
+            surfaceWidth: 4,
+            surfaceHeight: 4
+        )
+        #expect(CFEqual(portSurface.ref, original))
     }
 }
