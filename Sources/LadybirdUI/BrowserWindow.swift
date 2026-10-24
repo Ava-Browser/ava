@@ -71,67 +71,84 @@ public struct BrowserWindow: View {
             // would re-run whenever SwiftUI re-appears the view.
             .task { model.start(homeURL: Self.launchURL) }
             .toolbar {
-                // Back/forward sit left of Reload, the order Safari and every macOS browser uses. Each is gated on the
-                // engine's own answer (`canGoBack`/`canGoForward`, refreshed when navigation happens) rather than on a
-                // guessed history depth, so the buttons cannot disagree with what traversing would actually do.
-                ToolbarItem(placement: .navigation) {
-                    Button(action: model.goBack) {
-                        Label("Back", systemImage: "chevron.backward")
-                    }
-                    .help("Go back (⌘[)")
-                    .disabled(!model.canGoBack)
-                }
-
-                ToolbarItem(placement: .navigation) {
-                    Button(action: model.goForward) {
-                        Label("Forward", systemImage: "chevron.forward")
-                    }
-                    .help("Go forward (⌘])")
-                    .disabled(!model.canGoForward)
-                }
-
-                ToolbarItem(placement: .navigation) {
-                    Button(action: model.reload) {
-                        Label("Reload", systemImage: "arrow.clockwise")
-                    }
-                    .help("Reload the page (⌘R)")
-                    .disabled(model.currentURL.isEmpty)
-                }
-
-                // The address field is the window's primary control, so it takes the flexible middle slot rather than
-                // sitting in a custom header strip under the toolbar.
+                // One principal item holding the navigation cluster, the address field and New Tab.
                 //
-                // The icon sits *inside* the field, on the text's own leading edge, which is the macOS convention
-                // (Safari, Mail, System Settings). A sibling HStack put the icon outside the border, where it read as a
-                // separate control and the rounded border's own insets misaligned it against the text.
+                // These were separate toolbar items, with the buttons in `.navigation` and the field in `.principal`.
+                // That pins the buttons to the window's left edge and centres the field independently, which opens a
+                // dead gap between them that grows with the window -- the header looked assembled rather than drawn.
+                // Safari centres the cluster as a unit and lets the buttons hug the field; one item reproduces that,
+                // and the field's own ceiling is what stops the group stretching.
                 ToolbarItem(placement: .principal) {
-                    HStack(spacing: 6) {
-                        Image(systemName: model.isLoading ? "arrow.trianglehead.2.clockwise.rotate.90" : "globe")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 14, height: 14)
-                            .accessibilityHidden(true)
+                    HStack(spacing: 10) {
+                        // Back/forward/reload read left to right in the order every macOS browser uses. Each is gated
+                        // on the engine's own answer (`canGoBack`/`canGoForward`, refreshed when navigation happens)
+                        // rather than a guessed history depth, so a button cannot disagree with what traversing would
+                        // actually do.
+                        HStack(spacing: 14) {
+                            Button(action: model.goBack) {
+                                Label("Back", systemImage: "chevron.backward")
+                            }
+                            .help("Go back (⌘[)")
+                            .disabled(!model.canGoBack)
 
-                        TextField("Search or enter address", text: $model.addressText)
-                            .textFieldStyle(.plain)
-                            .focused($addressFocused)
-                            .onSubmit(model.submitAddress)
+                            Button(action: model.goForward) {
+                                Label("Forward", systemImage: "chevron.forward")
+                            }
+                            .help("Go forward (⌘])")
+                            .disabled(!model.canGoForward)
+
+                            Button(action: model.reload) {
+                                Label("Reload", systemImage: "arrow.clockwise")
+                            }
+                            .help("Reload the page (⌘R)")
+                            .disabled(model.currentURL.isEmpty)
+                        }
+                        .buttonStyle(.borderless)
+                        .labelStyle(.iconOnly)
+
+                        // The icon sits *inside* the field, on the text's own leading edge, which is the macOS
+                        // convention (Safari, Mail, System Settings). A sibling HStack put the icon outside the border,
+                        // where it read as a separate control and the rounded border's own insets misaligned it against
+                        // the text.
+                        HStack(spacing: 6) {
+                            Image(systemName: model.isLoading ? "arrow.trianglehead.2.clockwise.rotate.90" : "globe")
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 14, height: 14)
+                                .accessibilityHidden(true)
+
+                            TextField("Search or enter address", text: $model.addressText)
+                                .textFieldStyle(.plain)
+                                .focused($addressFocused)
+                                .onSubmit(model.submitAddress)
+                        }
+                        // The field draws its own capsule, always.
+                        //
+                        // It used to rely on the toolbar item's chrome, because a background of its own stacked a
+                        // second border inside the one macOS drew for a single-item `.principal`. Now the item holds
+                        // the whole cluster, no per-item chrome is drawn, and the field would otherwise have no
+                        // background at all -- which is what the screenshot showed. The condition is gone rather than
+                        // inverted: it was only ever there to avoid a second border, and there is no first one now.
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background { FieldChrome() }
+                        // Ceiling on the field, not on the group: without it the pill grows to fill the toolbar, and
+                        // the cluster stops reading as centred.
+                        .frame(minWidth: 240, idealWidth: 520, maxWidth: 620)
+                        .contentShape(Rectangle())
+                        .onTapGesture { addressFocused = true }
+
+                        // Trailing the field, where Safari puts it: `+` reads as "another page of this kind", so it
+                        // belongs next to the address it would open rather than in the sidebar's navigation group.
+                        Button {
+                            model.openTab()
+                        } label: {
+                            Label("New Tab", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderless)
+                        .labelStyle(.iconOnly)
+                        .help("New Tab (⌘T)")
                     }
-                    // One control, one background: the item's own container is the field's chrome on macOS 26, so
-                    // drawing a second rounded rect inside it produced a visible double border. The system capsule is
-                    // also what centres the icon against the text, so no padding constant has to be tuned for that.
-                    //
-                    // Older systems have no item chrome, so they get an explicit capsule instead; on those, `fill`
-                    // alone is right because a border there would be the only one, not the second of two.
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background { SystemVersusFieldChrome() }
-                    // Caps the field so it centres like Safari's instead of stretching across the whole toolbar.
-                    // `.principal` gives the item the flexible middle slot; without an explicit ceiling the pill
-                    // grows to fill it.
-                    .frame(minWidth: 240, idealWidth: 520, maxWidth: 620)
-                    .contentShape(Rectangle())
-                    .onTapGesture { addressFocused = true }
                 }
             }
             // The model is per-window state, so its shortcuts live here rather than in `Commands`. ⌘W, ⌘Q, ⌘M and
@@ -154,20 +171,21 @@ public struct BrowserWindow: View {
             }
     }
 
-    /// On macOS 26 a toolbar item draws its own capsule behind its content, so the address field must contribute no
-    /// background of its own or the two borders stack. Earlier systems draw none, so the field supplies one.
-    private struct SystemVersusFieldChrome: View {
+    /// The address field's capsule, drawn by the host.
+    ///
+    /// `textBackgroundColor` and `separatorColor` rather than literals, so it follows the system's appearance instead
+    /// of staying light on a dark window.
+    private struct FieldChrome: View {
         var body: some View {
-            if #available(macOS 26.0, *) {
-                Color.clear
-            } else {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color(nsColor: .textBackgroundColor))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-                    }
-            }
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                // A material, not `textBackgroundColor`: that colour is near-white in light mode but *darker* than the
+                // toolbar in dark mode, so the field read as a black bar. A material is defined relative to what is
+                // behind it, which is the one property that has to hold on both appearances.
+                .fill(.thinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                }
         }
     }
 
