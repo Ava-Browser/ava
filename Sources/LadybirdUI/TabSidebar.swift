@@ -251,13 +251,23 @@ private struct SpaceSwitcherDock: View {
                 HStack(spacing: 4) {
                     ForEach(model.spaces) { space in
                         let isActive = model.activeWorkspace.id == space.id
-                        SpaceDockPill(space: space, isActive: isActive) {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                model.selectWorkspace(space)
-                            }
-                        }
+                        let canDelete = model.spaces.count > 1
+                        SpaceDockPill(
+                            space: space,
+                            isActive: isActive,
+                            action: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    model.selectWorkspace(space)
+                                }
+                            },
+                            onDelete: canDelete ? {
+                                withAnimation(.snappy(duration: 0.2)) {
+                                    model.removeWorkspace(space)
+                                }
+                            } : nil
+                        )
                         .contextMenu {
-                            if model.spaces.count > 1 {
+                            if canDelete {
                                 Button("Delete Space", role: .destructive) {
                                     withAnimation(.snappy(duration: 0.2)) {
                                         model.removeWorkspace(space)
@@ -288,6 +298,7 @@ private struct SpaceDockPill: View {
     let space: Workspace
     let isActive: Bool
     let action: () -> Void
+    var onDelete: (() -> Void)? = nil
 
     @State private var isHovering = false
 
@@ -299,6 +310,18 @@ private struct SpaceDockPill: View {
                 Text(space.name)
                     .font(.system(size: 12, weight: isActive ? .semibold : .regular))
                     .lineLimit(1)
+
+                if isHovering, let onDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .padding(2)
+                            .background(Circle().fill(Color.primary.opacity(0.1)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete Space")
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)

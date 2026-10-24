@@ -180,3 +180,60 @@ struct SpacesPersistenceTests {
         #expect(model.selectedTabID == tab2.id)
     }
 }
+
+@Suite("Space cycling and deletion")
+@MainActor
+struct SpaceCyclingTests {
+    final class MemoryStore: SpacesStore, @unchecked Sendable {
+        var state: SpacesStoreState?
+        func load() -> SpacesStoreState? { state }
+        func save(_ state: SpacesStoreState) { self.state = state }
+    }
+
+    @Test("Cycling next and previous spaces")
+    func cycleSpaces() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+        let model = BrowserModel(spacesManager: manager)
+
+        let space1 = model.activeWorkspace
+        model.createWorkspace(name: "Space 2")
+        let space2 = model.activeWorkspace
+        model.createWorkspace(name: "Space 3")
+        let space3 = model.activeWorkspace
+
+        #expect(model.activeWorkspace.id == space3.id)
+
+        model.selectNextWorkspace()
+        #expect(model.activeWorkspace.id == space1.id)
+
+        model.selectNextWorkspace()
+        #expect(model.activeWorkspace.id == space2.id)
+
+        model.selectPreviousWorkspace()
+        #expect(model.activeWorkspace.id == space1.id)
+
+        model.selectWorkspace(at: 2)
+        #expect(model.activeWorkspace.id == space3.id)
+    }
+
+    @Test("Deleting a space cleans up tabs and switches active space")
+    func deleteSpace() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+        let model = BrowserModel(spacesManager: manager)
+
+        let space1 = model.activeWorkspace
+        model.createWorkspace(name: "Space 2")
+        let space2 = model.activeWorkspace
+
+        // Space 2 opens with an initial blank tab, add another tab
+        _ = model.openTab(url: "https://tab-space2.com")
+        #expect(model.activeNormalTabs.count == 2)
+
+        model.removeWorkspace(space2)
+        #expect(model.spaces.count == 1)
+        #expect(model.activeWorkspace.id == space1.id)
+        #expect(model.tabs.filter { $0.workspaceID == space2.id }.isEmpty)
+    }
+}

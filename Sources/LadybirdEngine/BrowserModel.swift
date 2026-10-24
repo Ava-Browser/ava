@@ -142,6 +142,16 @@ public final class BrowserModel {
             MainActor.assumeIsolated { self?.applyViewport(width: width, height: height, scale: scale) }
         }
 
+        webView.onSwipeSpace = { [weak self] deltaX in
+            MainActor.assumeIsolated {
+                if deltaX < 0 {
+                    self?.selectNextWorkspace()
+                } else {
+                    self?.selectPreviousWorkspace()
+                }
+            }
+        }
+
         webView.onMouse = { [weak self] type, x, y, button, buttons, clickCount, wheelDeltaY in
             MainActor.assumeIsolated {
                 guard let self, let app = self.app, let engineID = self.selectedTab?.engineID else { return }
@@ -218,6 +228,28 @@ public final class BrowserModel {
         if let active = spacesManager.spaces.first(where: { $0.id == spacesManager.activeWorkspaceID }) {
             selectWorkspace(active)
         }
+    }
+
+    public func selectNextWorkspace() {
+        let currentSpaces = spacesManager.spaces
+        guard currentSpaces.count > 1,
+              let currentIndex = currentSpaces.firstIndex(where: { $0.id == spacesManager.activeWorkspaceID }) else { return }
+        let nextIndex = (currentIndex + 1) % currentSpaces.count
+        selectWorkspace(currentSpaces[nextIndex])
+    }
+
+    public func selectPreviousWorkspace() {
+        let currentSpaces = spacesManager.spaces
+        guard currentSpaces.count > 1,
+              let currentIndex = currentSpaces.firstIndex(where: { $0.id == spacesManager.activeWorkspaceID }) else { return }
+        let prevIndex = (currentIndex - 1 + currentSpaces.count) % currentSpaces.count
+        selectWorkspace(currentSpaces[prevIndex])
+    }
+
+    public func selectWorkspace(at index: Int) {
+        let currentSpaces = spacesManager.spaces
+        guard index >= 0 && index < currentSpaces.count else { return }
+        selectWorkspace(currentSpaces[index])
     }
 
     // MARK: - Tabs & Rehydration

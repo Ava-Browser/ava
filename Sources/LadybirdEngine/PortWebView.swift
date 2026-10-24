@@ -21,6 +21,10 @@ public final class PortWebView: NSView {
     /// Mouse input, in CSS pixels relative to this view's top-left.
     public var onMouse: ((PortMouseEventType, Double, Double, PortMouseButton, PortMouseButton, Int32, Double) -> Void)?
 
+    /// Trackpad horizontal swipe for space switching.
+    /// DeltaX < 0 is swipe left (navigate to next space); deltaX > 0 is swipe right (previous space).
+    public var onSwipeSpace: ((Double) -> Void)?
+
     /// Keyboard input. The engine dispatches these asynchronously (see `PortApp.sendKey`).
     public var onKey: ((Int32, UInt32, UInt32, Bool) -> Void)?
     public var onTypeText: ((String) -> Void)?
@@ -143,7 +147,31 @@ public final class PortWebView: NSView {
         onMouse?(.up, x, y, .secondary, .none, Int32(event.clickCount), 0)
     }
 
+    private var cumulativeSwipeX: Double = 0
+    private var isTrackingHorizontalSwipe = false
+
     public override func scrollWheel(with event: NSEvent) {
+        if event.hasPreciseScrollingDeltas {
+            // Trackpad 2-finger horizontal swipe detection for space navigation (TDD §3 & PRD Feature 2)
+            if event.phase == .began {
+                cumulativeSwipeX = 0
+                isTrackingHorizontalSwipe = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) * 1.5
+            } else if event.phase == .changed {
+                if isTrackingHorizontalSwipe {
+                    cumulativeSwipeX += event.scrollingDeltaX
+                }
+            } else if event.phase == .ended || event.phase == .cancelled {
+                if isTrackingHorizontalSwipe {
+                    let threshold: Double = 40.0
+                    if abs(cumulativeSwipeX) >= threshold {
+                        onSwipeSpace?(cumulativeSwipeX)
+                    }
+                    isTrackingHorizontalSwipe = false
+                    cumulativeSwipeX = 0
+                }
+            }
+        }
+
         let (x, y) = point(event)
         onMouse?(.wheel, x, y, .none, .none, 0, PortWebView.wheelDelta(from: event))
     }

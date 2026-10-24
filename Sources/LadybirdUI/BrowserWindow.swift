@@ -146,6 +146,29 @@ public struct BrowserWindow: View {
                     // down, which in a tabbed browser is the wrong granularity. Closing the last tab closes the
                     // window, which is what applicationShouldTerminateAfterLastWindowClosed already does.
                     Button("") { model.closeSelectedTab() }.keyboardShortcut("w", modifiers: .command)
+
+                    // Spaces keyboard shortcuts (PRD Feature 2.1)
+                    // ⌘⌥← / ⌘⌥→ to cycle through adjacent Spaces
+                    Button("") {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            model.selectPreviousWorkspace()
+                        }
+                    }.keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+
+                    Button("") {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            model.selectNextWorkspace()
+                        }
+                    }.keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+
+                    // ⌘⌥[1...9] to jump directly to Space N
+                    ForEach(1...9, id: \.self) { num in
+                        Button("") {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                model.selectWorkspace(at: num - 1)
+                            }
+                        }.keyboardShortcut(KeyEquivalent(Character("\(num)")), modifiers: [.command, .option])
+                    }
                 }
                 .opacity(0)
                 .accessibilityHidden(true)
