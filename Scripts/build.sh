@@ -32,6 +32,23 @@ if [[ "${1:-}" != "--swift-only" ]]; then
     cmake --build "${BUILD_DIR}" --target LibPort
 fi
 
+# `swift build` cannot warn about this itself: it only links the dylib when a Swift file references a
+# symbol, and by then the error is a bare `library 'lagom-port' not found`.
+if [[ ! -f "${BUILD_DIR}/lib/liblagom-port.dylib" ]]; then
+    cat >&2 <<'MSG'
+error: the shim dylib is missing, so the package cannot link.
+
+    cd Extern/ladybird
+    ./Meta/ladybird.py build --build-dir Build/release
+
+That is a multi-hour cold build (vcpkg plus the engine). To reuse a tree you
+already have instead of rebuilding:
+
+    ln -s /path/to/existing/ladybird/Build/release Extern/ladybird/Build/release
+MSG
+    exit 1
+fi
+
 cd "${REPO_ROOT}"
 swift build
 echo "built"

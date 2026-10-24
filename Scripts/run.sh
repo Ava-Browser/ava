@@ -13,6 +13,21 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${REPO_ROOT}/Extern/ladybird/Build/release"
 
+if [[ ! -f "${BUILD_DIR}/lib/liblagom-port.dylib" ]]; then
+    cat >&2 <<'MSG'
+error: the shim dylib is missing. Build the fork first:
+
+    cd Extern/ladybird
+    ./Meta/ladybird.py build --build-dir Build/release
+
+That is a multi-hour cold build (vcpkg plus the engine). If you already have a
+build tree elsewhere, point the package at it by symlinking rather than rebuilding:
+
+    ln -s /path/to/existing/ladybird/Build/release Extern/ladybird/Build/release
+MSG
+    exit 1
+fi
+
 export LADYBIRD_BINARY_PATH="${BUILD_DIR}/bin/Ladybird.app/Contents/MacOS"
 export DYLD_LIBRARY_PATH="${BUILD_DIR}/lib"
 
