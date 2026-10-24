@@ -72,20 +72,34 @@ if ! git -C "${FORK}" rev-parse --verify --quiet upstream/master >/dev/null; the
     if ! git -C "${FORK}" remote | grep -qx upstream; then
         git -C "${FORK}" remote add upstream https://github.com/LadybirdBrowser/ladybird.git 2>/dev/null || true
     fi
-    git -C "${FORK}" fetch -q upstream master 2>/dev/null || true
+    # A shallow submodule (CI clones --depth 1) has no upstream history to merge-base against, so ask
+    # for it explicitly. Without --depth this deepens the fetch enough to find the fork point.
+    git -C "${FORK}" fetch -q upstream master 2>/dev/null \
+        || git -C "${FORK}" fetch -q --unshallow upstream 2>/dev/null \
+        || true
 fi
 
+base=""
 if git -C "${FORK}" rev-parse --verify --quiet upstream/master >/dev/null; then
-    base="$(git -C "${FORK}" merge-base upstream/master HEAD)"
-    stray="$(git -C "${FORK}" diff "${base}" --name-only -- . \
+    base="$(git -C "${FORK}" merge-base upstream/master HEAD 2>/dev/null || true)"
+fi
+
+# FAIL CLOSED. An empty base means the diff below would error out and the `|| true` would turn a
+# broken guard into an "OK". Never let a hygiene check pass because it could not run.
+if [[ -z "${base}" ]]; then
+    fail_if "R7: could not determine the upstream fork point, so the check cannot run. Deepen the submodule: git -C Extern/ladybird fetch --unshallow upstream"
+else
+    if ! stray="$(git -C "${FORK}" diff "${base}" --name-only -- . 2>&1)"; then
+        fail_if "R7: git diff against ${base} failed: ${stray}"
+        stray=""
+    fi
+    stray="$(printf '%s\n' "${stray}" \
         | grep -vE '^(Libraries/LibPort/|Tests/LibWebView/TestNative|Libraries/CMakeLists\.txt$|Tests/LibWebView/CMakeLists\.txt$)' || true)"
     if [[ -n "${stray}" ]]; then
         echo "FAIL: R7: fork modifies files outside LibPort/ and the native probes:"
         echo "${stray}" | sed 's/^/    /'
         fail=1
     fi
-else
-    fail_if "R7: the fork has no upstream remote. Run: git -C Extern/ladybird remote add upstream https://github.com/LadybirdBrowser/ladybird.git && git -C Extern/ladybird fetch upstream"
 fi
 
 # ---------------------------------------------------------------- layering
