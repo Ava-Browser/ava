@@ -3,12 +3,12 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * The 3-tier sidebar:
- * - Essentials grid (global across all spaces)
- * - Pinned tabs (per-space)
- * - Normal tabs (per-space)
- * - Separator with "Close all unpinned"
- * - Space switcher dock at the bottom
+ * The 3-tier spatial sidebar (Zen & Arc inspired):
+ * - Essentials grid (global top tier across all spaces, rounded app tiles)
+ * - Pinned tabs (space-scoped, persistent bookmarks)
+ * - Separator with subtle "Close all unpinned" button
+ * - Normal tabs (active tabs in space)
+ * - Space switcher dock (capsule dock with spring pills, icon/emoji support, new space sheet)
  */
 
 import LadybirdEngine
@@ -18,29 +18,38 @@ struct TabSidebar: View {
     @Bindable var model: BrowserModel
     @State private var showingNewSpaceSheet = false
     @State private var newSpaceName = ""
+    @State private var newSpaceIcon = "sparkles"
+
+    private let availableIcons = [
+        "square.stack.3d.up", "sparkles", "briefcase", "book", "hammer",
+        "gamecontroller", "music.note", "house", "globe", "terminal"
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
             List(selection: selection) {
-                // Tier 1: Global Essentials
+                // Tier 1: Global Essentials Grid
                 if !model.essentialTabs.isEmpty {
                     Section {
-                        EssentialsGrid(model: model, selection: selection)
+                        EssentialsGrid(model: model)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 8, trailing: 4))
+                            .listRowSeparator(.hidden)
                     } header: {
                         Text("Essentials")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .textCase(.uppercase)
                     }
                 }
 
-                // Tier 2: Pinned tabs in active space
+                // Tier 2: Space Pinned Tabs
                 if !model.activePinnedTabs.isEmpty {
                     Section {
                         ForEach(model.activePinnedTabs) { tab in
-                            TabRow(tab: tab)
+                            TabRow(tab: tab, isPinned: true)
                                 .tag(tab.id)
                                 .contextMenu {
-                                    Button("Unpin Tab") { model.setTier(for: tab, tier: .normal) }
+                                    Button("Move to Tabs") { model.setTier(for: tab, tier: .normal) }
                                     Button("Make Essential") { model.setTier(for: tab, tier: .essential) }
                                     Divider()
                                     Button("Close Tab") { model.closeTab(tab) }
@@ -48,15 +57,16 @@ struct TabSidebar: View {
                         }
                     } header: {
                         Text("Pinned")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .textCase(.uppercase)
                     }
                 }
 
-                // Tier 3: Normal tabs in active space
+                // Tier 3: Space Normal Tabs
                 Section {
                     ForEach(model.activeNormalTabs) { tab in
-                        TabRow(tab: tab)
+                        TabRow(tab: tab, isPinned: false)
                             .tag(tab.id)
                             .contextMenu {
                                 Button("Pin Tab") { model.setTier(for: tab, tier: .pinned) }
@@ -68,16 +78,22 @@ struct TabSidebar: View {
                 } header: {
                     HStack {
                         Text("Tabs")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .textCase(.uppercase)
                         Spacer()
                         if !model.activeNormalTabs.isEmpty {
-                            Button("Close All") {
-                                model.closeAllUnpinnedInActiveWorkspace()
+                            Button {
+                                withAnimation(.snappy(duration: 0.2)) {
+                                    model.closeAllUnpinnedInActiveWorkspace()
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
                             }
                             .buttonStyle(.plain)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .help("Close all unpinned tabs")
                         }
                     }
                 }
@@ -86,29 +102,66 @@ struct TabSidebar: View {
             .scrollContentBackground(.hidden)
 
             Divider()
+                .opacity(0.6)
 
             // Space Switcher Dock
             SpaceSwitcherDock(model: model, showingNewSpaceSheet: $showingNewSpaceSheet)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .background(.bar)
+                .background(.ultraThinMaterial)
         }
         .sheet(isPresented: $showingNewSpaceSheet) {
-            VStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 18) {
                 Text("New Space")
-                    .font(.headline)
-                TextField("Space name", text: $newSpaceName)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 200)
+                    .font(.system(size: 16, weight: .semibold))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Name")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("Work, Personal, Research…", text: $newSpaceName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 260)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Icon")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        ForEach(availableIcons, id: \.self) { icon in
+                            Button {
+                                newSpaceIcon = icon
+                            } label: {
+                                Image(systemName: icon)
+                                    .font(.system(size: 13))
+                                    .frame(width: 24, height: 24)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(newSpaceIcon == icon ? Color.accentColor.opacity(0.2) : Color.clear)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(newSpaceIcon == icon ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
                 HStack {
+                    Spacer()
                     Button("Cancel") {
                         showingNewSpaceSheet = false
                         newSpaceName = ""
                     }
-                    Button("Create") {
+                    Button("Create Space") {
                         let name = newSpaceName.trimmingCharacters(in: .whitespacesAndNewlines)
                         if !name.isEmpty {
-                            model.createWorkspace(name: name)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                model.createWorkspace(name: name, icon: newSpaceIcon)
+                            }
                         }
                         showingNewSpaceSheet = false
                         newSpaceName = ""
@@ -117,7 +170,8 @@ struct TabSidebar: View {
                     .disabled(newSpaceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .padding(20)
+            .padding(22)
+            .frame(width: 380)
         }
     }
 
@@ -134,51 +188,55 @@ struct TabSidebar: View {
 
 private struct EssentialsGrid: View {
     @Bindable var model: BrowserModel
-    let selection: Binding<UUID?>
-
-    private let columns = [GridItem(.adaptive(minimum: 40, maximum: 56), spacing: 8)]
+    private let columns = [GridItem(.adaptive(minimum: 44, maximum: 60), spacing: 8)]
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 8) {
             ForEach(model.essentialTabs) { tab in
-                EssentialItem(tab: tab, isSelected: model.selectedTabID == tab.id) {
+                EssentialTile(tab: tab, isSelected: model.selectedTabID == tab.id) {
                     model.select(tab)
                 }
                 .contextMenu {
-                    Button("Unpin from Essentials") { model.setTier(for: tab, tier: .pinned) }
+                    Button("Move to Space Pinned") { model.setTier(for: tab, tier: .pinned) }
+                    Button("Move to Normal Tabs") { model.setTier(for: tab, tier: .normal) }
                     Divider()
                     Button("Close Essential") { model.closeTab(tab) }
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 2)
     }
 }
 
-private struct EssentialItem: View {
+private struct EssentialTile: View {
     let tab: BrowserTab
     let isSelected: Bool
     let action: () -> Void
 
+    @State private var isHovering = false
+
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 2) {
-                Image(systemName: tab.isLoading ? "circle.dotted" : "globe")
-                    .font(.system(size: 16))
-                    .foregroundStyle(isSelected ? .white : .primary)
-                    .frame(width: 32, height: 32)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(isSelected ? Color.accentColor : Color.secondary.opacity(0.15))
-                    )
+            VStack(spacing: 4) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(isSelected ? Color.accentColor : (isHovering ? Color.primary.opacity(0.08) : Color.primary.opacity(0.04)))
+                        .frame(width: 44, height: 44)
+
+                    Image(systemName: tab.isLoading ? "circle.dotted" : "globe")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(isSelected ? .white : .primary)
+                }
                 Text(tab.title)
-                    .font(.system(size: 10))
+                    .font(.system(size: 10, weight: isSelected ? .medium : .regular))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isSelected ? .primary : .secondary)
             }
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
         .help(tab.currentURL.isEmpty ? "New Tab" : tab.currentURL)
     }
 }
@@ -188,86 +246,100 @@ private struct SpaceSwitcherDock: View {
     @Binding var showingNewSpaceSheet: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     ForEach(model.spaces) { space in
-                        SpacePill(
-                            space: space,
-                            isActive: model.activeWorkspace.id == space.id
-                        ) {
-                            model.selectWorkspace(space)
+                        let isActive = model.activeWorkspace.id == space.id
+                        SpaceDockPill(space: space, isActive: isActive) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                model.selectWorkspace(space)
+                            }
                         }
                         .contextMenu {
                             if model.spaces.count > 1 {
                                 Button("Delete Space", role: .destructive) {
-                                    model.removeWorkspace(space)
+                                    withAnimation(.snappy(duration: 0.2)) {
+                                        model.removeWorkspace(space)
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                .padding(.horizontal, 2)
             }
 
             Button {
                 showingNewSpaceSheet = true
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(width: 24, height: 24)
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(Color.primary.opacity(0.05)))
             }
-            .buttonStyle(.borderless)
-            .help("New Space")
+            .buttonStyle(.plain)
+            .help("New Space (⌘⌥N)")
         }
     }
 }
 
-private struct SpacePill: View {
+private struct SpaceDockPill: View {
     let space: Workspace
     let isActive: Bool
     let action: () -> Void
+
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: space.icon)
-                    .font(.system(size: 11))
+                    .font(.system(size: 11, weight: isActive ? .semibold : .regular))
                 Text(space.name)
                     .font(.system(size: 12, weight: isActive ? .semibold : .regular))
                     .lineLimit(1)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
-                Capsule()
-                    .fill(isActive ? Color.accentColor.opacity(0.2) : Color.clear)
+                Capsule(style: .continuous)
+                    .fill(isActive ? Color.accentColor.opacity(0.18) : (isHovering ? Color.primary.opacity(0.06) : Color.clear))
             )
             .overlay(
-                Capsule()
-                    .stroke(isActive ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 1)
+                Capsule(style: .continuous)
+                    .stroke(isActive ? Color.accentColor.opacity(0.4) : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+        .onHover { isHovering = $0 }
     }
 }
 
 private struct TabRow: View {
     let tab: BrowserTab
+    let isPinned: Bool
+
+    @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: tab.isLoading ? "circle.dotted" : (tab.isLoaded ? "globe" : "cloud"))
+        HStack(spacing: 8) {
+            Image(systemName: tab.isLoading ? "circle.dotted" : (isPinned ? "pin.fill" : (tab.isLoaded ? "globe" : "cloud")))
+                .font(.system(size: isPinned ? 10 : 12))
                 .foregroundStyle(tab.isLoaded ? .secondary : .tertiary)
-                .imageScale(.small)
+                .frame(width: 14, height: 14)
                 .accessibilityHidden(true)
 
             Text(tab.title)
+                .font(.system(size: 13))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(tab.isLoaded ? .primary : .secondary)
 
             Spacer(minLength: 0)
         }
+        .padding(.vertical, 2)
         .help(tab.currentURL.isEmpty ? "New Tab" : tab.currentURL)
     }
 }

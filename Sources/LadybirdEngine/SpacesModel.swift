@@ -139,6 +139,13 @@ public final class JSONSpacesStore: SpacesStore, @unchecked Sendable {
     public init(fileURL: URL? = nil) {
         if let fileURL {
             self.fileURL = fileURL
+        } else if let envPath = ProcessInfo.processInfo.environment["LADYBIRD_SPACES_STORE_PATH"] {
+            self.fileURL = URL(fileURLWithPath: envPath)
+        } else if ProcessInfo.processInfo.processName.contains("swiftpm-testing-helper") || ProcessInfo.processInfo.arguments.contains(where: { $0.contains(".xctest") || $0.contains("swift-testing") }) {
+            // Tests run in isolated temporary locations so live user state is never touched
+            let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("LadybirdTests-\(UUID().uuidString)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            self.fileURL = tempDir.appendingPathComponent("spaces-state.json")
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             let dir = appSupport.appendingPathComponent("LadybirdMac", isDirectory: true)
