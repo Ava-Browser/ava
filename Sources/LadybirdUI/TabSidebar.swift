@@ -17,35 +17,32 @@ struct TabSidebar: View {
     @Bindable var model: BrowserModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            List(selection: selection) {
-                ForEach(model.tabs) { tab in
-                    TabRow(tab: tab)
-                        .tag(tab.id)
-                        .contextMenu {
-                            Button("Close Tab") { model.closeTab(tab) }
-                        }
-                }
+        // The list owns the whole column. The "new tab" button used to sit in a hand-drawn bar under a manual
+        // Divider, but a sidebar action belongs in the toolbar where macOS puts it, and the divider was a second
+        // separator immediately above the split view's own — visibly two lines where the system draws one.
+        List(selection: selection) {
+            ForEach(model.tabs) { tab in
+                TabRow(tab: tab)
+                    .tag(tab.id)
+                    .contextMenu {
+                        Button("Close Tab") { model.closeTab(tab) }
+                    }
             }
-            .listStyle(.sidebar)
-            // The list's own background; the sidebar is chrome and should take the system material, not a colour.
-            .scrollContentBackground(.hidden)
-
-            Divider()
-            HStack(spacing: 2) {
+        }
+        .listStyle(.sidebar)
+        // The list's own background; the sidebar is chrome and should take the system material, not a colour.
+        .scrollContentBackground(.hidden)
+        // One action: a new tab. In the toolbar's sidebar group it collapses with the sidebar and takes the same
+        // control size as every other toolbar button, instead of being the one control at a different scale.
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
                 Button {
                     model.openTab()
                 } label: {
                     Label("New Tab", systemImage: "plus")
-                        .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.borderless)
                 .help("New Tab (⌘T)")
-
-                Spacer()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
         }
     }
 
