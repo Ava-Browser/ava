@@ -370,11 +370,15 @@ public final class BrowserModel {
 
     private func load(_ input: String, in tab: BrowserTab) {
         guard let app else { return }
-        let url = PortApp.normalizedURL(input)
+        // The engine decides whether this is a URL or a search. Showing the resolved form means a search visibly turns
+        // into its query URL rather than sitting there looking like it did nothing.
+        guard let url = app.load(input, in: tab.id) else {
+            failure = "Could not resolve \(input) as a URL or a search."
+            return
+        }
         addressText = url
         tab.setLoading(true)
         PortBenchmark.shared.recordLoad(url: url)
-        app.load(url, in: tab.id)
     }
 
     /// Main thread, after the pump stops. Called from `applicationWillTerminate`; the engine must outlive every view.

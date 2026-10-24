@@ -227,10 +227,13 @@ public final class PortApp {
         LbTabAnswerBeforeUnload(handle, tab, accept ? 1 : 0)
     }
 
-    public func load(_ url: String, in tab: UInt64) {
-        guard let handle else { return }
-        let normalized = PortApp.normalizedURL(url)
-        normalized.withCString { LbTabLoad(handle, tab, $0, normalized.utf8.count) }
+    /// Navigates the tab, returning the URL actually navigated to -- which differs from the argument whenever the input
+    /// was a search query, so the caller can show what happened in the address bar.
+    @discardableResult
+    public func load(_ input: String, in tab: UInt64) -> String? {
+        guard let handle, let url = PortApp.resolveUserInput(input) else { return nil }
+        url.withCString { LbTabLoad(handle, tab, $0, url.utf8.count) }
+        return url
     }
 
     /// Session history. `delta` is -1 for back, +1 for forward; anything else is treated as forward, matching the ABI.
@@ -310,16 +313,25 @@ public final class PortApp {
         text.withCString { LbTabTypeText(handle, tab, $0, text.utf8.count) }
     }
 
-    /// What the address bar's text actually means. `LbTabLoad` parses with `URL::Parser::basic_parse`, which reads
-    /// `localhost:8080` as a scheme, so a bare host needs `https://` added before it crosses the ABI.
-    public nonisolated static func normalizedURL(_ input: String) -> String {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let knownSchemes: Set<String> = ["http", "https", "about", "data", "file", "blob", "javascript", "mailto", "view-source"]
-        if let colon = trimmed.firstIndex(of: ":") {
-            let scheme = trimmed[trimmed.startIndex..<colon].lowercased()
-            if knownSchemes.contains(scheme) { return trimmed }
+    /// What the address bar's text means: a URL to navigate to, or a search query turned into one.
+    ///
+    /// Delegates the decision to the engine. A host cannot classify this correctly alone -- "ladybird.dev" versus
+    /// "ladybird browser" needs the public suffix list, and "localhost:8080" parses as a scheme -- and the previous
+    /// host-side version simply prefixed `https://`, so any search text became a bogus host and failed to load.
+    ///
+    /// Returns nil only when the engine can resolve the input as neither a URL nor a search, which happens for a bare
+    /// word with no search engine configured. Callers should surface that rather than navigating.
+    public nonisolated static func resolveUserInput(_ input: String) -> String? {
+        var outURL: UnsafeMutablePointer<CChar>?
+        var outLength = 0
+        let resolved = input.withCString { cString in
+            LbResolveUserInput(cString, input.utf8.count, &outURL, &outLength)
         }
-        return "https://" + trimmed
+        guard resolved == 1, let outURL else { return nil }
+        defer { LbStringFree(outURL) }
+        // `outLength` is authoritative: the buffer is not NUL-terminated, because the engine string's bytes are copied
+        // verbatim and a length-carrying API should not depend on a sentinel the producer never promised.
+        return String(decoding: UnsafeRawBufferPointer(start: outURL, count: outLength), as: UTF8.self)
     }
 }
 
