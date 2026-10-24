@@ -106,3 +106,19 @@ starves completely in `NSEventTrackingRunLoopMode` — and CommonModes avoids it
   than freezing a user's window.
 
 No manual menu-holding test is needed. Do not "simplify" the timer to the default mode.
+
+## Tooling, continued
+
+**A stale window outlives `pkill` and answers CGWindow queries with old geometry.**
+After killing and relaunching, a `CGWindowListCopyWindowInfo` query can still return the previous
+run's window (same owner name, same PID-recycled process), so the app appears to ignore a resize,
+a `defaultSize`, or a window-style change that is in fact applied. Measured the hard way: 40 minutes
+concluding `defaultSize` was broken when it was working, because every reading came from a dead
+window still reporting 1200x800. *Fix: print the frame from inside the process
+(`NSApp.windows.map(\.frame)`), not from outside. Trust the app's own report.*
+
+**A bare positional command-line argument stops SwiftUI creating a window at all.**
+`LadybirdMac https://example.com` launches, runs, and never creates a window: AppKit reads the
+argument as a document-open request. The process looks alive, which sends you looking for a
+rendering or activation bug. *Fix: require a `--url` flag; never pass a bare URL.* This is why
+`--url` exists rather than a positional argument.
