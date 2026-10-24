@@ -73,3 +73,110 @@ struct TabTeardownTests {
         #expect(model.tabs.isEmpty)
     }
 }
+
+@Suite("Spaces and write-through persistence")
+@MainActor
+struct SpacesPersistenceTests {
+    final class MemoryStore: SpacesStore, @unchecked Sendable {
+        var state: SpacesStoreState?
+        func load() -> SpacesStoreState? { state }
+        func save(_ state: SpacesStoreState) { self.state = state }
+    }
+
+    @Test("Creating spaces and distributing tabs across tiers writes through immediately")
+    func persistenceWriteThrough() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+
+        // Starts with 1 default space
+        #expect(manager.spaces.count == 1)
+        let spaceA = manager.activeWorkspace
+
+        // Add essential tab
+        let essential = manager.addTab(workspaceID: nil, tier: .essential, url: "https://essential.com")
+        #expect(essential.workspaceID == nil)
+        #expect(manager.essentials.count == 1)
+
+        // Create second space
+        let spaceB = manager.createWorkspace(name: "Work", icon: "briefcase")
+        #expect(manager.spaces.count == 2)
+
+        // Switch to space B and add pinned & normal tabs
+        manager.selectWorkspace(id: spaceB.id)
+        #expect(manager.activeWorkspaceID == spaceB.id)
+
+        let pinned = manager.addTab(workspaceID: spaceB.id, tier: .pinned, url: "https://pinned.com")
+        let normal1 = manager.addTab(workspaceID: spaceB.id, tier: .normal, url: "https://normal1.com")
+        let normal2 = manager.addTab(workspaceID: spaceB.id, tier: .normal, url: "https://normal2.com")
+
+        #expect(manager.activePinnedTabs.count == 1)
+        #expect(manager.activeNormalTabs.count == 2)
+        #expect(manager.essentials.count == 1) // Global essential still visible
+
+        // Invariant 1: Tab lives in exactly one tier, exactly one place
+        manager.setTier(for: normal1.id, tier: .pinned)
+        #expect(manager.activePinnedTabs.count == 2)
+        #expect(manager.activeNormalTabs.count == 1)
+
+        // Verify write-through persistence restored in a fresh manager instance
+        let restoredManager = SpacesManager(store: store)
+        #expect(restoredManager.spaces.count == 2)
+        #expect(restoredManager.activeWorkspaceID == spaceB.id)
+        #expect(restoredManager.essentials.count == 1)
+        #expect(restoredManager.activePinnedTabs.count == 2)
+        #expect(restoredManager.activeNormalTabs.count == 1)
+
+        // BrowserModel rehydration and selection
+        let model = BrowserModel(spacesManager: restoredManager)
+        #expect(model.tabs.count == 4) // 1 essential + 2 pinned + 1 normal
+        #expect(model.activeWorkspace.id == spaceB.id)
+    }
+
+    @Test("Closing all unpinned tabs leaves pinned and essentials untouched")
+    func closeAllUnpinned() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+        let model = BrowserModel(spacesManager: manager)
+
+        model.openTab(url: "https://essential.com", tier: .essential)
+        model.openTab(url: "https://pinned.com", tier: .pinned)
+        model.openTab(url: "https://normal1.com", tier: .normal)
+        model.openTab(url: "https://normal2.com", tier: .normal)
+
+        #expect(model.essentialTabs.count == 1)
+        #expect(model.activePinnedTabs.count == 1)
+        #expect(model.activeNormalTabs.count == 2)
+
+        model.closeAllUnpinnedInActiveWorkspace()
+
+        #expect(model.essentialTabs.count == 1)
+        #expect(model.activePinnedTabs.count == 1)
+        #expect(model.activeNormalTabs.count == 0)
+    }
+
+    @Test("Switching spaces restores per-space active tab selection memory")
+    func spaceSelectionMemory() {
+        let store = MemoryStore()
+        let manager = SpacesManager(store: store)
+        let model = BrowserModel(spacesManager: manager)
+
+        let space1 = model.activeWorkspace
+        let tab1 = model.openTab(url: "https://space1.com")!
+        #expect(model.selectedTabID == tab1.id)
+
+        model.createWorkspace(name: "Second")
+        let space2 = model.activeWorkspace
+        let tab2 = model.openTab(url: "https://space2.com")!
+        #expect(model.selectedTabID == tab2.id)
+
+        // Switch back to space1 -> should restore tab1
+        model.selectWorkspace(space1)
+        #expect(model.activeWorkspace.id == space1.id)
+        #expect(model.selectedTabID == tab1.id)
+
+        // Switch back to space2 -> should restore tab2
+        model.selectWorkspace(space2)
+        #expect(model.activeWorkspace.id == space2.id)
+        #expect(model.selectedTabID == tab2.id)
+    }
+}
