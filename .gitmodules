@@ -1,0 +1,4 @@
+[submodule "Extern/ladybird"]
+	path = Extern/ladybird
+	url = git@github.com:ankitchouhan1020/ladybird.git
+	branch = native-port

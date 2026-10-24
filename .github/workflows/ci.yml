@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Contract rules and layer boundaries
+        run: ./Scripts/check-layers.sh
+
+      - name: Build tests
+        run: swift build --build-tests
+
+      - name: Engine-free tests
+        run: swift test --filter LadybirdBridgeTests
+
+      # Deliberately NOT run here: the fork's CMake build (hours, and needs vcpkg) and the
+      # window-opening probes. See Documentation/Architecture.md, "Known gaps".
