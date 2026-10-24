@@ -84,6 +84,17 @@ Not architecture risks; each is product work with a defined shape.
   signalled from the event loop's wake pipe, clamped to the nearest timer deadline.
 - **The resized/dirty-window Cmd-Q flow** (teardown was tested via `applicationWillTerminate`).
 
+## Recorded decisions
+
+`Documentation/Decisions/` holds the calls that shaped the foundation, each with its reasoning:
+
+| | Decision |
+|---|---|
+| 0001 | [Two repos, one boundary](Decisions/0001-two-repos-one-boundary.md) |
+| 0002 | [SwiftUI, not GPUI](Decisions/0002-swiftui-not-gpui.md) |
+| 0003 | [The boundary is a C ABI, not Swift/C++ interop](Decisions/0003-c-abi-at-the-boundary.md) |
+| 0004 | [One event loop, pumped cooperatively](Decisions/0004-single-threaded-pump.md) |
+
 ## Status of the fork
 
 The work lives on branch `native-port` in `Extern/ladybird`, one commit on top of upstream

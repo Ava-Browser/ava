@@ -47,6 +47,7 @@ variables with an `.app` bundle and `@loader_path` rpaths — see `Documentation
 | `Documentation/Architecture.md` | Layer map, why the boundary is where it is, known gaps |
 | `Documentation/Rules.md` | R1–R8, the contract rules, and what each one prevents |
 | `Documentation/Traps.md` | Measured engine gotchas, each with its fix |
+| `Documentation/Decisions/` | Why the foundation looks like this (two repos, SwiftUI, C ABI, one loop) |
 
 `AGENTS.md` covers how to work in this repo (read order, layer rules, fork discipline).
 
