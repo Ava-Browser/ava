@@ -138,10 +138,36 @@ public final class PortApp {
         return LbTabCreate(handle)
     }
 
+    /// Destroys one tab's engine page. Stop presenting its surface first — see the header's note on ordering.
+    public func destroyTab(_ tab: UInt64) {
+        guard let handle else { return }
+        LbTabDestroy(handle, tab)
+    }
+
     public func load(_ url: String, in tab: UInt64) {
         guard let handle else { return }
         let normalized = PortApp.normalizedURL(url)
         normalized.withCString { LbTabLoad(handle, tab, $0, normalized.utf8.count) }
+    }
+
+    /// Session history. `delta` is -1 for back, +1 for forward; anything else is treated as forward, matching the ABI.
+    public enum HistoryDirection {
+        case back
+        case forward
+
+        var delta: Int32 { self == .back ? -1 : 1 }
+    }
+
+    public func traverseHistory(_ direction: HistoryDirection, in tab: UInt64) {
+        guard let handle else { return }
+        LbTabTraverseHistory(handle, tab, direction.delta)
+    }
+
+    /// Whether the engine currently has anywhere to go in that direction. Reads the engine's own navigation actions, so
+    /// this is the source of truth for enabling the button rather than an approximation from history depth.
+    public func canTraverseHistory(_ direction: HistoryDirection, in tab: UInt64) -> Bool {
+        guard let handle else { return false }
+        return LbTabCanTraverseHistory(handle, tab, direction.delta) != 0
     }
 
     public func surface(in tab: UInt64) -> PortSurface? {

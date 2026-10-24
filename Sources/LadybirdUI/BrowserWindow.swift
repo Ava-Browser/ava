@@ -36,13 +36,45 @@ public struct BrowserWindow: View {
     }
 
     public var body: some View {
-        content
-            .frame(minWidth: 480, minHeight: 320)
+        // One workspace: the sidebar is the only tab list, and the page sits beside it. Not a NavigationSplitView —
+        // this window has exactly two columns and no collapse behaviour, and a split view would add a sidebar toggle,
+        // column-width persistence and a divider style the brief did not ask for.
+        HSplitView {
+            TabSidebar(model: model)
+                .frame(minWidth: 170, idealWidth: 210, maxWidth: 320)
+
+            content
+                .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(minWidth: 620, minHeight: 320)
+            // NB: the title still reaches the Dock and the Window menu; it is only kept out of the toolbar, where it
+            // repeated what the address field already shows. `toolbar(removing:)` is macOS 15+, and the package
+            // targets 14.4, so older systems keep the title — cosmetic only, nothing depends on its absence.
             .navigationTitle(windowTitle)
+            .modifier(TitleHiddenInToolbar())
             // `task` runs once per view identity, which is exactly once per window. Starting the engine from `onAppear`
             // would re-run whenever SwiftUI re-appears the view.
             .task { model.start(homeURL: Self.launchURL) }
             .toolbar {
+                // Back/forward sit left of Reload, the order Safari and every macOS browser uses. Each is gated on the
+                // engine's own answer (`canGoBack`/`canGoForward`, refreshed when navigation happens) rather than on a
+                // guessed history depth, so the buttons cannot disagree with what traversing would actually do.
+                ToolbarItem(placement: .navigation) {
+                    Button(action: model.goBack) {
+                        Label("Back", systemImage: "chevron.backward")
+                    }
+                    .help("Go back (⌘[)")
+                    .disabled(!model.canGoBack)
+                }
+
+                ToolbarItem(placement: .navigation) {
+                    Button(action: model.goForward) {
+                        Label("Forward", systemImage: "chevron.forward")
+                    }
+                    .help("Go forward (⌘])")
+                    .disabled(!model.canGoForward)
+                }
+
                 ToolbarItem(placement: .navigation) {
                     Button(action: model.reload) {
                         Label("Reload", systemImage: "arrow.clockwise")
@@ -53,19 +85,38 @@ public struct BrowserWindow: View {
 
                 // The address field is the window's primary control, so it takes the flexible middle slot rather than
                 // sitting in a custom header strip under the toolbar.
+                //
+                // The icon sits *inside* the field, on the text's own leading edge, which is the macOS convention
+                // (Safari, Mail, System Settings). A sibling HStack put the icon outside the border, where it read as a
+                // separate control and the rounded border's own insets misaligned it against the text.
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 6) {
-                        Image(systemName: model.isLoading ? "circle.dotted" : "globe")
+                        Image(systemName: model.isLoading ? "arrow.trianglehead.2.clockwise.rotate.90" : "globe")
+                            .font(.system(size: 12, weight: .regular))
                             .foregroundStyle(.secondary)
-                            .imageScale(.small)
+                            .frame(width: 14, height: 14)
                             .accessibilityHidden(true)
 
                         TextField("Search or enter address", text: $model.addressText)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(.plain)
                             .focused($addressFocused)
                             .onSubmit(model.submitAddress)
-                            .frame(minWidth: 240, idealWidth: 520)
                     }
+                    // One control, one background: the item's own container is the field's chrome on macOS 26, so
+                    // drawing a second rounded rect inside it produced a visible double border. The system capsule is
+                    // also what centres the icon against the text, so no padding constant has to be tuned for that.
+                    //
+                    // Older systems have no item chrome, so they get an explicit capsule instead; on those, `fill`
+                    // alone is right because a border there would be the only one, not the second of two.
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background { SystemVersusFieldChrome() }
+                    // Caps the field so it centres like Safari's instead of stretching across the whole toolbar.
+                    // `.principal` gives the item the flexible middle slot; without an explicit ceiling the pill
+                    // grows to fill it.
+                    .frame(minWidth: 240, idealWidth: 520, maxWidth: 620)
+                    .contentShape(Rectangle())
+                    .onTapGesture { addressFocused = true }
                 }
             }
             // The model is per-window state, so its shortcuts live here rather than in `Commands`. ⌘W, ⌘Q, ⌘M and
@@ -74,10 +125,45 @@ public struct BrowserWindow: View {
                 Group {
                     Button("") { model.reload() }.keyboardShortcut("r", modifiers: .command)
                     Button("") { addressFocused = true }.keyboardShortcut("l", modifiers: .command)
+                    // ⌘[ / ⌘] is the macOS convention for history, and it is what the buttons' tooltips promise.
+                    Button("") { model.goBack() }.keyboardShortcut("[", modifiers: .command)
+                    Button("") { model.goForward() }.keyboardShortcut("]", modifiers: .command)
+                    Button("") { model.openTab() }.keyboardShortcut("t", modifiers: .command)
+                    // ⌘W closes a tab, not the window: the system Close command would otherwise take the whole window
+                    // down, which in a tabbed browser is the wrong granularity. Closing the last tab closes the
+                    // window, which is what applicationShouldTerminateAfterLastWindowClosed already does.
+                    Button("") { model.closeSelectedTab() }.keyboardShortcut("w", modifiers: .command)
                 }
                 .opacity(0)
                 .accessibilityHidden(true)
             }
+    }
+
+    /// On macOS 26 a toolbar item draws its own capsule behind its content, so the address field must contribute no
+    /// background of its own or the two borders stack. Earlier systems draw none, so the field supplies one.
+    private struct SystemVersusFieldChrome: View {
+        var body: some View {
+            if #available(macOS 26.0, *) {
+                Color.clear
+            } else {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color(nsColor: .textBackgroundColor))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                    }
+            }
+        }
+    }
+
+    private struct TitleHiddenInToolbar: ViewModifier {
+        func body(content: Content) -> some View {
+            if #available(macOS 15.0, *) {
+                content.toolbar(removing: .title)
+            } else {
+                content
+            }
+        }
     }
 
     private var windowTitle: String {
