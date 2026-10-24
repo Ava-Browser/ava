@@ -36,4 +36,32 @@ BINARY_PATH="$(cd "${BUILD_DIR}/bin/Ladybird.app/Contents/MacOS" && pwd -P)"
 export LADYBIRD_BINARY_PATH="${BINARY_PATH}"
 export DYLD_LIBRARY_PATH="$(cd "${BUILD_DIR}/lib" && pwd -P)"
 
-exec "$(swift build --show-bin-path)/LadybirdMac" "$@"
+EXECUTABLE="$(swift build --show-bin-path)/LadybirdMac"
+
+# Launch from a minimal .app bundle, not as a bare executable.
+#
+# A bare Mach-O cannot become the active application on current macOS: it launches, creates a window, and that window
+# reports kCGWindowIsOnscreen=nil and never takes focus, so the app appears not to have opened. Wrapping the same binary
+# in a bundle with an Info.plist is what makes it a regular app — measured, not inferred: identical binary, bare run
+# `active=false` and the window invisible; inside a bundle `frontmost=LadybirdMac` with red traffic lights.
+#
+# The executable stays in .build and the bundle's MacOS/ holds a symlink to it, so `swift build` keeps working without
+# copying anything. rpaths still resolve through the real path.
+BUNDLE_DIR="${REPO_ROOT}/.build/LadybirdMac.app"
+mkdir -p "${BUNDLE_DIR}/Contents/MacOS"
+cat > "${BUNDLE_DIR}/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>LadybirdMac</string>
+<key>CFBundleIdentifier</key><string>org.ladybird.mac.dev</string>
+<key>CFBundleName</key><string>LadybirdMac</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.1</string>
+<key>NSPrincipalClass</key><string>NSApplication</string>
+<key>NSHighResolutionCapable</key><true/>
+</dict></plist>
+PLIST
+ln -sfn "${EXECUTABLE}" "${BUNDLE_DIR}/Contents/MacOS/LadybirdMac"
+
+exec "${BUNDLE_DIR}/Contents/MacOS/LadybirdMac" "$@"
