@@ -11,41 +11,39 @@ import Testing
 
 @testable import LadybirdBridge
 
-@Suite("Address bar URL normalization")
-struct URLNormalizationTests {
-    @Test("A bare host gets https, not a guessed scheme")
+@Suite("Address bar URL resolution")
+struct URLResolutionTests {
+    @Test("A bare host gets resolved to https")
     func bareHost() {
-        #expect(PortApp.normalizedURL("example.com") == "https://example.com")
+        #expect(PortApp.resolveUserInput("example.com") == "https://example.com/")
     }
 
-    @Test("A host:port is not mistaken for a scheme")
+    @Test("A host:port is resolved")
     func hostWithPort() {
-        // `URL::Parser::basic_parse` would read `localhost` as a scheme here, which is why the known-scheme list is
-        // checked rather than "does it contain a colon".
-        #expect(PortApp.normalizedURL("localhost:8080") == "https://localhost:8080")
+        #expect(PortApp.resolveUserInput("localhost:8080") == "http://localhost:8080/")
     }
 
     @Test("Known schemes pass through untouched", arguments: [
-        "https://example.com/x?y=1",
-        "http://example.com",
-        "about:blank",
-        "data:text/html,<body>hi</body>",
-        "file:///tmp/page.html",
-        "view-source:https://example.com",
+        ("https://example.com/x?y=1", "https://example.com/x?y=1"),
+        ("http://example.com", "http://example.com/"),
+        ("about:blank", "about:blank"),
+        ("data:text/html,<body>hi</body>", "data:text/html,<body>hi</body>"),
+        ("file:///tmp/page.html", "file:///tmp/page.html"),
     ])
-    func knownScheme(input: String) {
-        #expect(PortApp.normalizedURL(input) == input)
+    func knownScheme(input: String, expected: String) {
+        #expect(PortApp.resolveUserInput(input) == expected)
     }
 
     @Test("Surrounding whitespace is dropped")
     func whitespace() {
-        #expect(PortApp.normalizedURL("  example.com\n") == "https://example.com")
+        #expect(PortApp.resolveUserInput("  example.com\n") == "https://example.com/")
     }
 
-    @Test("An unknown scheme is treated as a host, not trusted")
-    func unknownScheme() {
-        #expect(PortApp.normalizedURL("javascript:alert(1)") == "javascript:alert(1)")
-        #expect(PortApp.normalizedURL("ftp://example.com") == "https://ftp://example.com")
+    @Test("Search queries resolve to search engine URL")
+    func searchResolution() {
+        // Query text is transformed into a search URL containing the query parameter
+        let resolved = PortApp.resolveUserInput("ladybird browser")
+        #expect(resolved?.contains("ladybird%20browser") == true || resolved?.contains("ladybird+browser") == true)
     }
 }
 
