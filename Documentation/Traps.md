@@ -122,3 +122,12 @@ window still reporting 1200x800. *Fix: print the frame from inside the process
 argument as a document-open request. The process looks alive, which sends you looking for a
 rendering or activation bug. *Fix: require a `--url` flag; never pass a bare URL.* This is why
 `--url` exists rather than a positional argument.
+
+**Test mode is a layout-test switch, and it overrides font matching.**
+`FontPlugin::generic_font_name()` returns `SerenitySans` for every generic family when
+`m_is_layout_test_mode` is set, skipping matching entirely. It is reached from
+`WebContentOptions::is_test_mode`, which defaults to `No`. A browser must leave it alone; only the
+probes should set it. Symptom if you get it wrong: every page renders in the bundled fallback face
+and system fonts are silently ignored — while pages that ship their own WOFF files still look
+correct, which makes it look like a font-resolution bug rather than a configuration one.
+*Fix: never set `is_test_mode` outside a test harness.*
