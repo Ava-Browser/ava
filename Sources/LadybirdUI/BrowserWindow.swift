@@ -116,7 +116,6 @@ public struct BrowserWindow: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background { FieldChrome() }
                     // Caps the field so it centres like Safari's instead of stretching across the whole toolbar.
                     .frame(minWidth: 240, idealWidth: 520, maxWidth: 620)
                     .contentShape(Rectangle())
@@ -151,24 +150,6 @@ public struct BrowserWindow: View {
                 .opacity(0)
                 .accessibilityHidden(true)
             }
-    }
-
-    /// The address field's capsule, drawn by the host.
-    ///
-    /// `textBackgroundColor` and `separatorColor` rather than literals, so it follows the system's appearance instead
-    /// of staying light on a dark window.
-    private struct FieldChrome: View {
-        var body: some View {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                // A material, not `textBackgroundColor`: that colour is near-white in light mode but *darker* than the
-                // toolbar in dark mode, so the field read as a black bar. A material is defined relative to what is
-                // behind it, which is the one property that has to hold on both appearances.
-                .fill(.thinMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-                }
-        }
     }
 
     private struct TitleHiddenInToolbar: ViewModifier {
