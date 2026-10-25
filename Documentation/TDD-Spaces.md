@@ -222,4 +222,14 @@ phases; none implied by this TDD.
   selected tab was mid-load; relaunch restored IDs, order, tiers, per-space selections, and active space exactly.
   Activating an unloaded tab added a WebContent process while both existing helper PIDs survived, proving lazy
   rehydration did not kill neighbours. Drag-retier and the native sidebar collapse toggle were also run-verified.
-- (pending, M5.5) — containers probe verdict.
+- 2026-10-25 — M5.5 Containers Probe: GREEN on all three questions (measured in fork probe `TestNativeContainers.cpp`,
+  commit `8acb7af5e2`).
+  (a) Simultaneous named sessions load and paint normally in one process (PASS: Session A painted=true, Session B painted=true).
+  (b) Cookie isolation holds between simultaneous sessions (PASS: Session A contains 'token=secret_a', Session B does not).
+  (c) Multiple persistent cookie databases under distinct identities survive quit/relaunch (PASS: 'Container_Work' database
+      reopened into a fresh CookieJar retrieved 'work_token=work_secret').
+  Architectural finding: LibWebView's low-level stores (`Database::Database`, `CookieJar`, `StorageJar`) fully support arbitrary
+  distinct persisted databases in parallel. However, `BrowsingSession::create` and `Application::session_for_new_view` currently
+  only branch on `IsPrivate::No` (default session) vs `IsPrivate::Yes` (in-memory transient stores). To ship per-space
+  containers in M6, an upstream-shaped patch extending `Application` and `ViewImplementation` to accept a named session identifier
+  (or persistent `BrowsingSession`) will be required.
