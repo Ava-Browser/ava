@@ -21,10 +21,24 @@ public final class WorkspaceManager {
     public private(set) var persistenceFailure: String?
 
     @ObservationIgnored private let store: GraphStore
+    @ObservationIgnored private var writeDisabledDueToBackupFailure = false
 
     public init(store: GraphStore = .applicationDefault()) {
         self.store = store
-        let saved = store.load() ?? PersistedGraph()
+        let saved: PersistedGraph
+        switch store.load() {
+        case let .loaded(graph):
+            saved = graph
+        case .empty:
+            saved = PersistedGraph()
+        case let .unreadablePreserved(backupURL):
+            saved = PersistedGraph()
+            persistenceFailure = "Prior workspace graph was unreadable and was backed up to \(backupURL.lastPathComponent)."
+        case let .unreadableBackupFailed(error):
+            saved = PersistedGraph()
+            writeDisabledDueToBackupFailure = true
+            persistenceFailure = "Prior workspace graph was unreadable, and backing it up failed (\(error.localizedDescription)). Automatic saving is disabled to protect the file from being overwritten."
+        }
         workspaces = saved.workspaces
         tabs = saved.tabs
         essentialOrder = saved.essentialOrder
@@ -214,6 +228,9 @@ public final class WorkspaceManager {
     }
 
     private func persist() {
+        guard !writeDisabledDueToBackupFailure else {
+            return
+        }
         do {
             try store.save(snapshot())
             persistenceFailure = nil

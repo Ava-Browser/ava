@@ -101,17 +101,76 @@ struct WorkspacePersistenceTests {
         #expect(model.selectedTab?.currentURL == "https://two.example")
     }
 
-    @Test("An unreadable graph is preserved before fresh state can replace it")
-    func unreadableGraphIsBackedUp() throws {
-        let store = temporaryStore()
-        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
-        try FileManager.default.createDirectory(at: store.url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let broken = Data("not json".utf8)
-        try broken.write(to: store.url)
+    @Test("An unreadable graph is preserved with a timestamp and repeated failures accumulate")
+    func unreadableGraphIsBackedUpWithTimestamps() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let storeURL = root.appendingPathComponent("spaces.json")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
 
-        _ = WorkspaceManager(store: store)
+        let broken1 = Data("broken payload 1".utf8)
+        try broken1.write(to: storeURL)
 
-        #expect(try Data(contentsOf: store.url.appendingPathExtension("unreadable")) == broken)
+        let time1 = Date(timeIntervalSince1970: 1_700_000_000)
+        let store1 = GraphStore(url: storeURL, now: { time1 })
+        let manager1 = WorkspaceManager(store: store1)
+        _ = manager1.createWorkspace(name: "Fresh")
+
+        let backups1 = try FileManager.default.contentsOfDirectory(atPath: root.path)
+            .filter { $0.contains("unreadable-") }
+        #expect(backups1.count == 1)
+        let firstBackupURL = root.appendingPathComponent(backups1[0])
+        #expect(try Data(contentsOf: firstBackupURL) == broken1)
+
+        // Write a second broken file at a later time
+        let time2 = time1.addingTimeInterval(3600)
+        let broken2 = Data("broken payload 2".utf8)
+        try broken2.write(to: storeURL)
+
+        let store2 = GraphStore(url: storeURL, now: { time2 })
+        _ = WorkspaceManager(store: store2)
+
+        let backups2 = try FileManager.default.contentsOfDirectory(atPath: root.path)
+            .filter { $0.contains("unreadable-") }
+        #expect(backups2.count == 2)
+    }
+
+    @Test("If backup of unreadable graph fails, overwrite is aborted and store remains untouched")
+    func unreadableBackupFailureAbortsOverwrite() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let storeURL = root.appendingPathComponent("spaces.json")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let broken = Data("precious unreadable data".utf8)
+        try broken.write(to: storeURL)
+
+        // Force write failure for backup URL by occupying the target backup directory/path with an unwritable file
+        let simulatedTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withYear, .withMonth, .withDay, .withTime]
+        let timestamp = formatter.string(from: simulatedTime)
+        let backupURL = storeURL.deletingPathExtension().appendingPathExtension("unreadable-\(timestamp).json")
+
+        // Pre-create an unwritable directory at the backup location
+        try FileManager.default.createDirectory(at: backupURL, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: backupURL.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: backupURL.path)
+        }
+
+        let store = GraphStore(url: storeURL, now: { simulatedTime })
+        let manager = WorkspaceManager(store: store)
+
+        #expect(manager.persistenceFailure?.contains("backing it up failed") == true)
+
+        // A mutation in memory must NOT overwrite storeURL
+        _ = manager.createWorkspace(name: "Should Not Overwrite")
+        _ = manager.createTab(url: "https://should-not-persist.example")
+
+        #expect(try Data(contentsOf: storeURL) == broken)
     }
 
     @Test("Retiering writes through immediately")

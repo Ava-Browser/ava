@@ -162,10 +162,19 @@ public struct PersistedGraph: Codable, Sendable {
 /// Synchronous and main-thread by design: the graph is small, and a background write would reintroduce exactly the
 /// thread hop S3 exists to forbid.
 public struct GraphStore: Sendable {
-    public let url: URL
+    public enum LoadResult: Sendable {
+        case empty
+        case loaded(PersistedGraph)
+        case unreadableBackupFailed(any Error)
+        case unreadablePreserved(backupURL: URL)
+    }
 
-    public init(url: URL) {
+    public let url: URL
+    private let now: @Sendable () -> Date
+
+    public init(url: URL, now: @escaping @Sendable () -> Date = Date.init) {
         self.url = url
+        self.now = now
     }
 
     /// `~/Library/Application Support/LadybirdMac/spaces.json` — one root for all profiles, which is the Chrome layout
@@ -176,16 +185,46 @@ public struct GraphStore: Sendable {
         return GraphStore(url: base.appendingPathComponent("LadybirdMac/spaces.json"))
     }
 
-    public func load() -> PersistedGraph? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        guard let graph = try? JSONDecoder().decode(PersistedGraph.self, from: data),
-              graph.schemaVersion <= PersistedGraph.currentSchemaVersion else {
-            // The next mutation will create a fresh document. Preserve the bytes first: silently overwriting a corrupt
-            // or newer-schema graph would turn a recoverable launch into permanent data loss.
-            try? data.write(to: url.appendingPathExtension("unreadable"), options: .atomic)
-            return nil
+    /// Loads the stored document.
+    ///
+    /// Invariants (M5 hygiene):
+    /// - Corrupted or newer-schema files are backed up to a timestamped file `.unreadable-YYYYMMDDTHHMMSSZ` so repeated
+    ///   launches accumulate unreadable versions rather than clobbering the previous backup.
+    /// - If the backup fails to write, load reports `unreadableBackupFailed` and callers MUST abort overwriting the file.
+    public func load() -> LoadResult {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .empty
         }
-        return graph
+        guard let data = try? Data(contentsOf: url) else {
+            return .empty
+        }
+
+        if let graph = try? JSONDecoder().decode(PersistedGraph.self, from: data),
+           graph.schemaVersion <= PersistedGraph.currentSchemaVersion {
+            return .loaded(graph)
+        }
+
+        // Unreadable or newer schema. Preserve bytes before anything can replace them.
+        let timestamp = Self.formattedTimestamp(from: now())
+        let backupURL = url.deletingPathExtension()
+            .appendingPathExtension("unreadable-\(timestamp).json")
+
+        do {
+            try FileManager.default.createDirectory(
+                at: backupURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: backupURL, options: .withoutOverwriting)
+            return .unreadablePreserved(backupURL: backupURL)
+        } catch {
+            return .unreadableBackupFailed(error)
+        }
+    }
+
+    private static func formattedTimestamp(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withYear, .withMonth, .withDay, .withTime]
+        return formatter.string(from: date)
     }
 
     public func save(_ graph: PersistedGraph) throws {
