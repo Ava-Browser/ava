@@ -9,11 +9,27 @@
 - `PRD-Settings.md` + `TDD-Settings.md`: inventory/design finalized in `8758a9d`, with
   migration/container evidence corrections in `d95832c`. New Settings capabilities have
   NOT shipped merely because the designs are approved.
-- `TDD-SafariHeader.md`: first real-control pass implemented in an isolated worktree,
-  revised after native focus/blur review. Worker reports 45 tests plus Accessibility
-  selection/blur evidence; coordinator integration review remains a draft-PR gate.
+- `TDD-SafariHeader.md`: first real-control pass revised after native focus/blur review.
+  Worker reported Accessibility selection/blur evidence; coordinator independently ran
+  the STACKED sidebar + header app: **57 tests in 10 suites passed**, layer guard passed.
+  Final native/UI/measurement review remains a draft-PR gate.
 - Engine baseline: `66616b4deeb42fbc7ce722075f22b1b1e5f5891a`, default branch `ava-port`.
-  Search-settings fork work is separate and unreviewed; do not advance the app pin yet.
+  Search-settings draft is fork commit `0e037e448d`. Worker reports a passing isolated
+  native run with new-shim provenance; coordinator has NOT independently audited/rerun
+  the C++/ABI probe. Do not advance the app pin yet.
+
+## Pull requests and preserved evidence
+
+- [Ava #2 — sidebar/settings foundation](https://github.com/Ava-Browser/ava/pull/2)
+- [Ava #3 — Safari header draft](https://github.com/Ava-Browser/ava/pull/3), stacked on #2
+- [ava-engine #1 — search settings/probe draft](https://github.com/Ava-Browser/ava-engine/pull/1)
+
+The engine PR preserves exact isolated build commands/results in
+`Tests/LibWebView/TestNativeSettingsSearch.md`. Header screenshots and its revised report
+are in #3. See [M6 readiness](Reports/M6-Readiness.md) and
+[manual-unload readiness](Reports/ManualUnload-Readiness.md). Manual unload stopped at
+investigation: **no implementation or test pass is claimed**. Do not open/merge an empty
+implementation PR for that checkpoint.
 
 ## Resume order and open gates
 
@@ -66,8 +82,10 @@ Use the Orca task/dispatch records and each PR's checkpoint report for exact sou
 state. Draft PRs preserve incomplete work; they are not merge approval.
 
 All new workers use **antigravity/gemini-3.8-flash, high thinking**. One writer per
-worktree. Stop new scope at this handoff; settle tasks and explicitly release/reuse
-workers. Do not leave agents modifying code after PR snapshots are taken.
+worktree. Workers were instructed to checkpoint/stop; expected active tasks have reported
+completion or explicit not-implemented outcomes and were released from their dispatches.
+Externally created Pi terminals remain idle, not continuing source work. Reassign through
+new tasks before resuming; do not leave agents modifying code after PR snapshots are taken.
 
 Build guard requires Bash 4+ (Homebrew Bash on Mac), not `/bin/bash` 3.2. Existing engine
 build is in a separate checkout: compare source bytes and report provenance warnings.
