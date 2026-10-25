@@ -1,4 +1,4 @@
 [submodule "Extern/ladybird"]
 	path = Extern/ladybird
-	url = git@github.com:ankitchouhan1020/ladybird.git
+	url = https://github.com/Ava-Browser/ava-engine.git
 	branch = native-port
