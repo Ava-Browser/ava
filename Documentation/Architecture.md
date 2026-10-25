@@ -97,7 +97,7 @@ Not architecture risks; each is product work with a defined shape.
 
 ## Status of the fork
 
-The work lives on branch `native-port` in `Extern/ladybird`, one commit on top of upstream
+The work lives on branch `ava-port` in `Extern/ladybird`, one commit on top of upstream
 `0203ab20ca`: `LibPort` plus the three probes, 8 files, additive only. It is **not pushed** — the
 fork has no remote yet, so `Extern/ladybird` is a symlink rather than a submodule. When the fork
 gets a remote, swap the symlink for a submodule pinned to that commit; nothing else needs to

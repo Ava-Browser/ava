@@ -32,8 +32,8 @@ the way vcpkg pins advance in Ladybird — never incidentally.
 
 ## Consequences
 
-- A cold clone needs `--recurse-submodules`, and a fresh submodule lands on `master` (no
-  `LibPort`), so `Scripts/build.sh` switches it to `native-port`.
+- A cold clone needs `--recurse-submodules`; the submodule checks out the pinned commit
+  detached. Port development uses `ava-port`, now the engine fork's default branch.
 - The fork's build tree (3 GB, hours to produce) is not in the repo. `build.sh` and `run.sh` fail
   with instructions and offer symmetrically linking an existing tree.
 - The ABI's single source of truth is `Extern/ladybird/Libraries/LibPort/ladybird_port.h`; the app

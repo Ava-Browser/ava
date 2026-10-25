@@ -16,7 +16,7 @@ fail_if() { echo "FAIL: $1"; fail=1; }
 # Every check below reads the fork's LibPort directory, so establish it exists first. This is the
 # failure a fresh clone hits: the work lives on a branch that is not checked out.
 if [[ ! -d "${PORT_DIR}" ]]; then
-    fail_if "Libraries/LibPort is missing. The fork's work lives on branch 'native-port': git -C Extern/ladybird checkout native-port"
+    fail_if "Libraries/LibPort is missing. The fork's work lives on branch 'ava-port': git -C Extern/ladybird checkout ava-port"
     exit 1
 fi
 
