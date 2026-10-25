@@ -174,7 +174,7 @@ public struct BrowserWindow: View {
     }
 
     private var windowTitle: String {
-        guard let host = URL(string: model.currentURL)?.host(), !host.isEmpty else { return "Ladybird" }
+        guard let host = URL(string: model.currentURL)?.host(), !host.isEmpty else { return "Ava" }
         return host
     }
 

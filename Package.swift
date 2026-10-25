@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "LadybirdMac",
+    name: "Ava",
     // Matches the fork's CMAKE_OSX_DEPLOYMENT_TARGET, so linking its dylib is warning-free.
     platforms: [.macOS("14.4")],
     products: [
@@ -53,7 +53,7 @@ let package = Package(
 
         // The app itself. Deliberately thin: see Documentation/Architecture.md.
         .executableTarget(
-            name: "LadybirdMac",
+            name: "Ava",
             dependencies: ["LadybirdEngine", "LadybirdUI"],
             path: "Sources/LadybirdMac"
         ),

@@ -12,7 +12,7 @@ import LadybirdUI
 import SwiftUI
 
 @main
-struct LadybirdMacApp: App {
+struct AvaApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {

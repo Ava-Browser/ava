@@ -36,7 +36,7 @@ BINARY_PATH="$(cd "${BUILD_DIR}/bin/Ladybird.app/Contents/MacOS" && pwd -P)"
 export LADYBIRD_BINARY_PATH="${BINARY_PATH}"
 export DYLD_LIBRARY_PATH="$(cd "${BUILD_DIR}/lib" && pwd -P)"
 
-EXECUTABLE="$(swift build --show-bin-path)/LadybirdMac"
+EXECUTABLE="$(swift build --show-bin-path)/Ava"
 
 # Launch from a minimal .app bundle, not as a bare executable.
 #
@@ -47,21 +47,23 @@ EXECUTABLE="$(swift build --show-bin-path)/LadybirdMac"
 #
 # The executable stays in .build and the bundle's MacOS/ holds a symlink to it, so `swift build` keeps working without
 # copying anything. rpaths still resolve through the real path.
-BUNDLE_DIR="${REPO_ROOT}/.build/LadybirdMac.app"
+# Keep the existing bundle identifier below so saved preferences survive the product rename.
+BUNDLE_DIR="${REPO_ROOT}/.build/Ava.app"
 mkdir -p "${BUNDLE_DIR}/Contents/MacOS"
 cat > "${BUNDLE_DIR}/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>LadybirdMac</string>
+<key>CFBundleExecutable</key><string>Ava</string>
 <key>CFBundleIdentifier</key><string>org.ladybird.mac.dev</string>
-<key>CFBundleName</key><string>LadybirdMac</string>
+<key>CFBundleName</key><string>Ava</string>
+<key>CFBundleDisplayName</key><string>Ava</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-ln -sfn "${EXECUTABLE}" "${BUNDLE_DIR}/Contents/MacOS/LadybirdMac"
+ln -sfn "${EXECUTABLE}" "${BUNDLE_DIR}/Contents/MacOS/Ava"
 
-exec "${BUNDLE_DIR}/Contents/MacOS/LadybirdMac" "$@"
+exec "${BUNDLE_DIR}/Contents/MacOS/Ava" "$@"

@@ -175,14 +175,14 @@ struct AboutSettingsPane: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "ladybug.fill")
+            Image(systemName: "globe")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 48, height: 48)
                 .foregroundStyle(.tint)
                 .accessibilityHidden(true)
 
-            Text("Ladybird")
+            Text("Ava")
                 .font(.title2.bold())
 
             Text(versionString)

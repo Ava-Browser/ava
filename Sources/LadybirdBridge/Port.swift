@@ -108,7 +108,7 @@ public final class PortApp {
     private let context: CallbackContext
 
     public init?(
-        argv0: String = CommandLine.arguments.first ?? "LadybirdMac",
+        argv0: String = CommandLine.arguments.first ?? "Ava",
         callbacks: PortCallbacks
     ) {
         let context = CallbackContext(callbacks)
