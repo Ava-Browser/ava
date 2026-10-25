@@ -236,3 +236,17 @@ phases; none implied by this TDD.
   only branch on `IsPrivate::No` (default session) vs `IsPrivate::Yes` (in-memory transient stores). To ship per-space
   containers in M6, an upstream-shaped patch extending `Application` and `ViewImplementation` to accept a named session identifier
   (or persistent `BrowsingSession`) will be required.
+- 2026-10-25 — Readiness audit correction: the historical M5.5 green above is narrower than
+  the stated M6 acceptance. At the current pin, `TestNativeContainers` creates default/private
+  views, manipulates CookieJars directly, and reopens a named database in the SAME process.
+  It does not attach two real named-container pages or execute quit/relaunch. The cookie/
+  persistence checks print PASS/FAIL without failing the process, and the paint/load wait
+  is unbounded. Preserve that result as feasibility evidence only. Named-session support
+  now exists in `Application::get_or_create_container_session` / `session_for_new_view`,
+  but native-port binding and M6 isolation remain UNVERIFIED. Before container UI, add
+  bounded, fail-closed native probes for two real named-container page sessions, actual
+  request/page cookie and storage isolation, helper binding, and a separate-process restart.
+  A protected `ViewImplementation::m_session` field alone does not prove post-construction
+  reassignment is safe; probe construction/client/session-store ordering first. Do not
+  enable Set Profile for a named-container-only implementation. Threshold-only end-of-swipe
+  switching also does not satisfy M6's 1:1 gesture requirement or page-scroll arbitration.

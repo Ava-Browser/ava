@@ -91,9 +91,13 @@ Do not clear UserDefaults domains, browsing data, or workspace state during reco
 3. Distinguish original key absence from an explicit null/disabled choice. Inspect the
    actual `searchEngine.engine`, legacy `searchEngine.name`, and `autocompleteEngine`
    shapes; preserve selected custom descriptors, suggestions opt-in, and DNS choice.
-   Getter/serialize_json normalization alone may lose provenance: the migration probe
-   must establish where LibPort captures original presence before mutation. If it cannot,
-   migration is BLOCKED; do not guess disabled versus never-configured.
+   Getter/serialize_json normalization loses provenance: `Settings::serialize_json` also
+   writes `searchEngine.engine = null` during unrelated saves with no selected provider.
+   Therefore raw null is **ambiguous**, not proof of explicit user disablement. Capture
+   original presence before mutation; return a typed ambiguous/needs-choice state when
+   intent cannot be reconstructed. Preserve bytes/preferences and request an explicit
+   provider/off choice before transmitting a prose query; do not silently choose fallback
+   or claim the user disabled search. Missing-file first-run fallback remains unchanged.
 4. Validate/import without silently deleting existing HTTP/custom provider values. Such
    imported entries may be shown read-only pending secure editing policy. Do not send a
    query to a different provider because an imported entry is unavailable.
