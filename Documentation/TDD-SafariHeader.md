@@ -1,9 +1,11 @@
 # Specification: Safari-reference header
 
-**Status:** Design specification only; not assigned for implementation.
+**Status:** First-pass implementation authorized in the isolated `safari-header` worktree;
+native focus/blur and visual review gates remain open.
 **Reference:** User-supplied Safari header capture, 2026-10-25.
-**Relationship:** Sidebar work in `TDD-SpaceSettings.md` still freezes the existing header.
-This document defines a later, separately approved header pass; it does not lift that freeze.
+**Relationship:** The sidebar slice in `TDD-SpaceSettings.md` preserved the original header.
+The user's subsequent supervision request authorized this separate header pass; coordinator
+released the freeze only in its isolated worktree. Integration still requires review.
 
 ## 1. Goal and boundaries
 
@@ -199,5 +201,6 @@ Acceptance:
 5. Run build, tests, and layer guard. Provide actual screenshots and remaining visual/
    functional differences. A passing build alone is not evidence of Safari matching.
 
-No source changes or worker assignment are authorized by this document alone. The
-coordinator must explicitly release the current header freeze for a later task.
+No broader feature work is authorized by this document alone. Coordinator authorized
+only the first-pass real-control slice; missing utilities and unverified behavior must
+remain explicit. Do not integrate an unreviewed header or claim complete Safari parity.
