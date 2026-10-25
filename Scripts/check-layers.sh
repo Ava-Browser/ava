@@ -93,11 +93,39 @@ else
         fail_if "R7: git diff against ${base} failed: ${stray}"
         stray=""
     fi
-    stray="$(printf '%s\n' "${stray}" \
-        | grep -vE '^(Libraries/LibPort/|Tests/LibWebView/TestNative|Libraries/CMakeLists\.txt$|Tests/LibWebView/CMakeLists\.txt$)' || true)"
-    if [[ -n "${stray}" ]]; then
-        echo "FAIL: R7: fork modifies files outside LibPort/ and the native probes:"
-        echo "${stray}" | sed 's/^/    /'
+
+    # Upstream-shaped patches, each explicitly reviewed and cryptographically pinned in a manifest.
+    # A filename allowlist alone would permit arbitrary future mutations in those files.
+    # Instead, each allowed file must match its exact approved SHA-256 hash.
+    declare -A approved_patch_hashes=(
+        ["Libraries/LibWebView/BrowsingSession.h"]="05b73d401b6474697cdf8f48f40fb418434a66dd3c42a7dfc22ea623a85f571f"
+        ["Libraries/LibWebView/BrowsingSession.cpp"]="6f6a4adb5c5d442ac27f5452ef0fd69e7b149506ea019cc789d7c7c242192219"
+        ["Libraries/LibWebView/Application.h"]="5ceaf1373f66ed80db66941659c881a47c2750497600bb4295ca672689711caf"
+        ["Libraries/LibWebView/Application.cpp"]="048d04bf7bc280fd59a2752d16666223972fce6f54ce7961017d717813ca6cd9"
+    )
+
+    unapproved_stray=""
+    for file in ${stray}; do
+        if [[ "${file}" =~ ^(Libraries/LibPort/|Tests/LibWebView/TestNative|Libraries/CMakeLists\.txt$|Tests/LibWebView/CMakeLists\.txt$) ]]; then
+            continue
+        fi
+
+        expected_hash="${approved_patch_hashes[${file}]:-}"
+        if [[ -n "${expected_hash}" ]]; then
+            actual_hash="$(shasum -a 256 "${FORK}/${file}" 2>/dev/null | awk '{print $1}')"
+            if [[ "${actual_hash}" != "${expected_hash}" ]]; then
+                echo "FAIL: R7: Approved patch file ${file} has drifted from approved hash!"
+                echo "    Expected: ${expected_hash}"
+                echo "    Actual:   ${actual_hash}"
+                fail=1
+            fi
+        else
+            unapproved_stray="${unapproved_stray}\n    ${file}"
+        fi
+    done
+
+    if [[ -n "${unapproved_stray}" ]]; then
+        echo -e "FAIL: R7: fork modifies files outside LibPort/, native probes, and approved patch manifests:${unapproved_stray}"
         fail=1
     fi
 fi
