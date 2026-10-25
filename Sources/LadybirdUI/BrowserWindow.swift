@@ -13,7 +13,7 @@ public struct BrowserWindow: View {
     @State private var model = BrowserModel()
     @State private var spaceActionState = SpaceActionState()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @FocusState private var addressFocused: Bool
+    @State private var addressState = AddressBarState()
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init() {}
@@ -98,63 +98,43 @@ public struct BrowserWindow: View {
                     homeURL: Self.launchURL,
                     overrideRestoredTab: Self.launchURLArgument != nil
                 )
+                addressState.handleTabSwitch(to: model.currentURL)
+            }
+            .onChange(of: model.selectedTabID) { _, _ in
+                addressState.handleTabSwitch(to: model.currentURL)
+            }
+            .onChange(of: model.currentURL) { _, newURL in
+                addressState.handleURLChange(newURL)
             }
             .onChange(of: model.focusAddressRequested) { _, requested in
                 if requested {
-                    addressFocused = true
+                    addressState.beginEditing()
                     model.focusAddressRequested = false
                 }
             }
             .toolbar {
-                // Navigation sits at the window's leading edge and the field takes the flexible middle slot, which is
-                // the arrangement Safari and Mail use. Grouping all of it into one principal item pulled the buttons
-                // in beside the field and left the outside edges empty, which is the opposite of native.
+                // Navigation history sits in a compact native group at the window's leading edge.
                 ToolbarItem(placement: .navigation) {
-                    Button(action: model.goBack) {
-                        Label("Back", systemImage: "chevron.backward")
+                    ControlGroup {
+                        Button(action: model.goBack) {
+                            Label("Back", systemImage: "chevron.backward")
+                        }
+                        .help("Go back (⌘[)")
+                        .disabled(!model.canGoBack)
+
+                        Button(action: model.goForward) {
+                            Label("Forward", systemImage: "chevron.forward")
+                        }
+                        .help("Go forward (⌘])")
+                        .disabled(!model.canGoForward)
                     }
-                    .help("Go back (⌘[)")
-                    .disabled(!model.canGoBack)
+                    .controlGroupStyle(.navigation)
                 }
 
-                ToolbarItem(placement: .navigation) {
-                    Button(action: model.goForward) {
-                        Label("Forward", systemImage: "chevron.forward")
-                    }
-                    .help("Go forward (⌘])")
-                    .disabled(!model.canGoForward)
-                }
-
-                ToolbarItem(placement: .navigation) {
-                    Button(action: model.reload) {
-                        Label("Reload", systemImage: "arrow.clockwise")
-                    }
-                    .help("Reload the page (⌘R)")
-                    .disabled(model.currentURL.isEmpty)
-                }
-
-                // The icon sits *inside* the field, on the text's own leading edge, which is the macOS convention
-                // (Safari, Mail, System Settings). A sibling HStack put the icon outside the border, where it read as a
-                // separate control and the rounded border's own insets misaligned it against the text.
+                // Centered address capsule in the principal slot, holding resting host and trailing reload.
                 ToolbarItem(placement: .principal) {
-                    HStack(spacing: 6) {
-                        Image(systemName: model.isLoading ? "arrow.trianglehead.2.clockwise.rotate.90" : "globe")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 14, height: 14)
-                            .accessibilityHidden(true)
-
-                        TextField("Search or enter address", text: $model.addressText)
-                            .textFieldStyle(.plain)
-                            .focused($addressFocused)
-                            .onSubmit(model.submitAddress)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    // Caps the field so it centres like Safari's instead of stretching across the whole toolbar.
-                    .frame(minWidth: 240, idealWidth: 520, maxWidth: 620)
-                    .contentShape(Rectangle())
-                    .onTapGesture { addressFocused = true }
+                    AddressBarView(model: model, state: addressState)
+                        .frame(minWidth: 220, idealWidth: 360, maxWidth: 640)
                 }
 
                 // Trailing the field, where Safari puts it: `+` reads as "another page of this kind".
@@ -172,7 +152,7 @@ public struct BrowserWindow: View {
             .background {
                 Group {
                     Button("") { model.reload() }.keyboardShortcut("r", modifiers: .command)
-                    Button("") { addressFocused = true }.keyboardShortcut("l", modifiers: .command)
+                    Button("") { addressState.beginEditing() }.keyboardShortcut("l", modifiers: .command)
                     // ⌘[ / ⌘] is the macOS convention for history, and it is what the buttons' tooltips promise.
                     Button("") { model.goBack() }.keyboardShortcut("[", modifiers: .command)
                     Button("") { model.goForward() }.keyboardShortcut("]", modifiers: .command)
