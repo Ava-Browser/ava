@@ -215,4 +215,11 @@ phases; none implied by this TDD.
 - 2026-10-24 — CORRECTION: simultaneous profiles are NOT engine-blocked; they decompose into
   named sessions (§5 probe) plus app-side identity/stores, per the profile-ingredient table
   in §2.1. Only per-profile process isolation stays deferred.
+- 2026-10-25 — M5 persistence uses one atomically replaced JSON graph at
+  `~/Library/Application Support/LadybirdMac/spaces.json`. The graph is small, synchronous writes preserve S3, and a
+  malformed/newer document is copied to `.unreadable` before fresh state can replace it.
+- 2026-10-25 — M5 accepted: two spaces and five tabs across Essential/Pinned/Normal survived a graceful quit while the
+  selected tab was mid-load; relaunch restored IDs, order, tiers, per-space selections, and active space exactly.
+  Activating an unloaded tab added a WebContent process while both existing helper PIDs survived, proving lazy
+  rehydration did not kill neighbours. Drag-retier and the native sidebar collapse toggle were also run-verified.
 - (pending, M5.5) — containers probe verdict.

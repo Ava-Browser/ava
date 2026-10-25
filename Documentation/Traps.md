@@ -51,8 +51,8 @@ callbacks genuinely block the page (`Page::did_request_alert` spins the dialog l
 different outcome); `on_request_before_unload` → invoke the given `Function<void(bool)>`
 **with true meaning ALLOW navigation, not block**. Also `on_request_external_url_confirmation`'s
 bool means "open it?", not "rejected?". Everything else is a notification or a leaked request,
-not a deadlock. (Audit: `~/Documents/browsers/callback-audit.md`; read-verified, not yet
-run-verified — the unanswered-alert probe is still owed.)
+not a deadlock. (Audit: `~/Documents/browsers/callback-audit.md`; all four blocking rows are
+run-verified by the page-self-reporting fixture.)
 
 ## Tooling
 
@@ -78,6 +78,15 @@ sources differ, and warns if they merely happen to agree.*
 **A stale remote-tracking ref will make you doubt a real push.**
 `git cat-file -t <sha>` against a submodule fails until `git fetch` — the ref is local and stale,
 the object genuinely absent. *Fix: fetch before concluding a push did not happen.*
+
+**A copied submodule `.git` file can make Git inspect a different worktree than the bytes you build.**
+An Orca worktree inherited `Extern/ladybird/.git` pointing at the main checkout's module gitdir,
+then that gitdir's `core.worktree` was repointed at Orca. In the main checkout, `git status`,
+`git diff-files`, and even `git restore` therefore operated on Orca's bytes while `clang`, SwiftPM,
+and `diff` read the main bytes. Same HEAD plus clean status was true — for the wrong directory.
+*Fix: each outer worktree gets isolated submodule git metadata. Verify both
+`git -C Extern/ladybird rev-parse --show-toplevel` and raw file hashes; never infer byte identity
+from HEAD/status alone. Preserve both trees before repairing a pointer.*
 
 **The R7 fork-diff guard must diff against the merge-base, not `upstream/master`.**
 Otherwise every commit upstream has landed since this fork's HEAD looks like a local change and the
