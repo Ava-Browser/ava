@@ -3,7 +3,8 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * The active space's three tab tiers. Tier drops are durable model mutations, not view-local rearrangement.
+ * The active space's sidebar: adaptive captionless Essentials, active space header with collapse/options,
+ * collapsible pinned tabs, divider with Clear, New Tab, and normal tabs with pill selection.
  */
 
 import LadybirdEngine
@@ -11,73 +12,332 @@ import SwiftUI
 
 struct TabSidebar: View {
     @Bindable var model: BrowserModel
+    let actionState: SpaceActionState
+
+    @State private var isPinnedExpanded: Bool = true
+    @State private var isHeaderHovered: Bool = false
+    @State private var isEllipsisHovered: Bool = false
+    @FocusState private var isEllipsisFocused: Bool
+
+    @State private var isEssentialsTargeted: Bool = false
+    @State private var isPinnedTargeted: Bool = false
+    @State private var isNormalTargeted: Bool = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
-        List(selection: selection) {
-            Section("Essentials") {
-                if model.essentialTabs.isEmpty {
-                    DropHint()
-                        .dropDestination(for: String.self) { ids, _ in retier(ids, to: .essential) }
-                } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 46), spacing: 6)], spacing: 6) {
-                        ForEach(model.essentialTabs) { tab in
-                            EssentialTabButton(tab: tab, model: model)
-                                .draggable(tab.id.raw.uuidString)
-                        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // Persistence failure warning banner
+                if let failure = model.workspaceManager.persistenceFailure {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.yellow)
+                            .font(.caption)
+                            .accessibilityHidden(true)
+                        Text(failure)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
                     }
-                    .padding(.vertical, 3)
-                    .dropDestination(for: String.self) { ids, _ in retier(ids, to: .essential) }
+                    .padding(8)
+                    .background(Color.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal, 10)
+                    .padding(.top, 8)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Persistence failure: \(failure)")
                 }
-            }
 
-            Section("Pinned") {
-                if model.pinnedTabs.isEmpty {
-                    DropHint()
-                        .dropDestination(for: String.self) { ids, _ in retier(ids, to: .pinned) }
+                // 1. Essentials Tier (adaptive 48x48 rounded tiles, captionless)
+                essentialsSection
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                    .padding(.bottom, 12)
+
+                // 2. Active Space Header Row
+                if let activeWorkspace = model.activeWorkspace {
+                    activeSpaceHeader(activeWorkspace)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 4)
+                }
+
+                // 3. Pinned Tabs (collapsible under the active space row)
+                if isPinnedExpanded {
+                    pinnedSection
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 6)
+                }
+
+                // 4. Divider with trailing "Clear" button
+                dividerWithClear
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+
+                // 5. "+ New Tab" row
+                newTabRow
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 2)
+
+                // 6. Normal Tabs Tier
+                normalTabsSection
+                    .padding(.horizontal, 10)
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+            }
+        }
+        .focusable()
+        .onKeyPress(.downArrow) {
+            model.selectNextTab(includePinned: isPinnedExpanded)
+            return .handled
+        }
+        .onKeyPress(.upArrow) {
+            model.selectPreviousTab(includePinned: isPinnedExpanded)
+            return .handled
+        }
+        .scrollContentBackground(.hidden)
+        .background {
+            if let activeWorkspace = model.activeWorkspace {
+                if reduceTransparency {
+                    Color.clear
                 } else {
-                    ForEach(model.pinnedTabs) { tab in
-                        TabRow(tab: tab)
-                            .tag(tab.id)
-                            .draggable(tab.id.raw.uuidString)
-                            .dropDestination(for: String.self) { ids, _ in retier(ids, to: .pinned) }
-                            .contextMenu { tabMenu(tab) }
-                    }
-                }
-            }
-
-            Section("Tabs") {
-                ForEach(model.normalTabs) { tab in
-                    TabRow(tab: tab)
-                        .tag(tab.id)
-                        .draggable(tab.id.raw.uuidString)
-                        .dropDestination(for: String.self) { ids, _ in retier(ids, to: .normal) }
-                        .contextMenu { tabMenu(tab) }
-                }
-                if model.normalTabs.isEmpty {
-                    DropHint()
-                        .dropDestination(for: String.self) { ids, _ in retier(ids, to: .normal) }
-                }
-            }
-
-            if !model.normalTabs.isEmpty {
-                Section {
-                    Button("Close All Unpinned", role: .destructive, action: model.closeAllUnpinned)
+                    LinearGradient(
+                        colors: [
+                            Color(hex: activeWorkspace.theme.startHex).opacity(0.08),
+                            Color(hex: activeWorkspace.theme.endHex).opacity(0.03)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 }
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
     }
 
-    private var selection: Binding<TabID?> {
-        Binding(
-            get: { model.selectedTabID },
-            set: { id in
-                guard let id, let tab = model.tabs.first(where: { $0.id == id }) else { return }
-                model.select(tab)
+    // MARK: - Essentials Section
+
+    private var essentialsSection: some View {
+        VStack(spacing: 0) {
+            if model.essentialTabs.isEmpty {
+                // Real-sized drop target without resting filler text; highlights on drag
+                ZStack {
+                    if isEssentialsTargeted {
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4]))
+                            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        Text("Drop to make Essential")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 32)
+                .contentShape(Rectangle())
+                .dropDestination(for: String.self) { ids, _ in
+                    retier(ids, to: .essential)
+                } isTargeted: { targeted in
+                    isEssentialsTargeted = targeted
+                }
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48, maximum: 48), spacing: 8)], spacing: 8) {
+                    ForEach(model.essentialTabs) { tab in
+                        EssentialTile(tab: tab, model: model)
+                            .draggable(tab.id.raw.uuidString)
+                    }
+                }
+                .dropDestination(for: String.self) { ids, _ in
+                    retier(ids, to: .essential)
+                } isTargeted: { targeted in
+                    isEssentialsTargeted = targeted
+                }
             }
-        )
+        }
     }
+
+    // MARK: - Active Space Header
+
+    private func activeSpaceHeader(_ workspace: Workspace) -> some View {
+        HStack(spacing: 6) {
+            Button {
+                if reduceMotion {
+                    isPinnedExpanded.toggle()
+                } else {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isPinnedExpanded.toggle()
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: isPinnedExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16, height: 16)
+                        .accessibilityHidden(true)
+
+                    Text(workspace.name)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isPinnedExpanded ? "Collapse Pinned Tabs in \(workspace.name)" : "Expand Pinned Tabs in \(workspace.name)")
+            .help(isPinnedExpanded ? "Collapse Pinned Tabs" : "Expand Pinned Tabs")
+
+            Spacer(minLength: 0)
+
+            Menu {
+                SpaceContextMenu(workspace: workspace, model: model, actionState: actionState)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(isEllipsisHovered || isEllipsisFocused ? Color.primary.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .focused($isEllipsisFocused)
+            .opacity(isHeaderHovered || isEllipsisHovered || isEllipsisFocused ? 1.0 : 0.0)
+            .onHover { isEllipsisHovered = $0 }
+            .accessibilityLabel("Space options for \(workspace.name)")
+            .help("Space Options")
+        }
+        .frame(height: 34)
+        .contentShape(Rectangle())
+        .onHover { isHeaderHovered = $0 }
+        .contextMenu {
+            SpaceContextMenu(workspace: workspace, model: model, actionState: actionState)
+        }
+    }
+
+    // MARK: - Pinned Section
+
+    private var pinnedSection: some View {
+        VStack(spacing: 2) {
+            if model.pinnedTabs.isEmpty {
+                ZStack {
+                    if isPinnedTargeted {
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4]))
+                            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        Text("Drop to Pin Tab")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 28)
+                .contentShape(Rectangle())
+                .dropDestination(for: String.self) { ids, _ in
+                    retier(ids, to: .pinned)
+                } isTargeted: { targeted in
+                    isPinnedTargeted = targeted
+                }
+            } else {
+                ForEach(model.pinnedTabs) { tab in
+                    TabRowView(tab: tab, model: model)
+                        .draggable(tab.id.raw.uuidString)
+                        .dropDestination(for: String.self) { ids, _ in retier(ids, to: .pinned) }
+                        .contextMenu { tabMenu(tab) }
+                }
+            }
+        }
+        .dropDestination(for: String.self) { ids, _ in
+            retier(ids, to: .pinned)
+        } isTargeted: { targeted in
+            isPinnedTargeted = targeted
+        }
+    }
+
+    // MARK: - Divider with Clear
+
+    private var dividerWithClear: some View {
+        HStack(spacing: 8) {
+            Rectangle()
+                .fill(Color.primary.opacity(colorSchemeContrast == .increased ? 0.3 : 0.12))
+                .frame(height: 1)
+
+            if !model.normalTabs.isEmpty {
+                Button("Clear") {
+                    model.closeAllUnpinned()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Clear unpinned tabs")
+                .help("Close all normal tabs in this space")
+            }
+        }
+        .frame(height: 18)
+    }
+
+    // MARK: - New Tab Row
+
+    private var newTabRow: some View {
+        Button {
+            model.openTab()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+                    .accessibilityHidden(true)
+                Text("New Tab")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 32)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("New Tab")
+        .help("New Tab (⌘T)")
+    }
+
+    // MARK: - Normal Tabs Section
+
+    private var normalTabsSection: some View {
+        VStack(spacing: 3) {
+            ForEach(model.normalTabs) { tab in
+                TabRowView(tab: tab, model: model)
+                    .draggable(tab.id.raw.uuidString)
+                    .dropDestination(for: String.self) { ids, _ in retier(ids, to: .normal) }
+                    .contextMenu { tabMenu(tab) }
+            }
+            if model.normalTabs.isEmpty {
+                ZStack {
+                    if isNormalTargeted {
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4]))
+                            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        Text("Drop tab here")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 28)
+                .contentShape(Rectangle())
+                .dropDestination(for: String.self) { ids, _ in
+                    retier(ids, to: .normal)
+                } isTargeted: { targeted in
+                    isNormalTargeted = targeted
+                }
+            }
+        }
+        .dropDestination(for: String.self) { ids, _ in
+            retier(ids, to: .normal)
+        } isTargeted: { targeted in
+            isNormalTargeted = targeted
+        }
+    }
+
+    // MARK: - Helpers
 
     @ViewBuilder
     private func tabMenu(_ tab: BrowserTab) -> some View {
@@ -102,34 +362,43 @@ struct TabSidebar: View {
     }
 }
 
-private struct DropHint: View {
-    var body: some View {
-        Text("Drop a tab here")
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-            .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
-            .contentShape(Rectangle())
-    }
-}
+// MARK: - EssentialTile (48x48 Captionless)
 
-private struct EssentialTabButton: View {
+private struct EssentialTile: View {
     let tab: BrowserTab
     let model: BrowserModel
+    @State private var isHovered = false
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    private var isSelected: Bool {
+        model.selectedTabID == tab.id
+    }
 
     var body: some View {
-        Button { model.select(tab) } label: {
-            VStack(spacing: 4) {
+        Button {
+            model.select(tab)
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? Color.primary.opacity(0.15) : (isHovered ? Color.primary.opacity(0.08) : Color.primary.opacity(0.04)))
+
+                if isSelected || colorSchemeContrast == .increased {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(isSelected ? Color.primary.opacity(0.3) : Color.primary.opacity(0.15), lineWidth: 1)
+                }
+
                 Image(systemName: tab.isLoading ? "circle.dotted" : "globe")
-                    .frame(width: 28, height: 28)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
-                Text(tab.title)
-                    .font(.caption2)
-                    .lineLimit(1)
+                    .font(.system(size: 20))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity)
+            .frame(width: 48, height: 48)
         }
         .buttonStyle(.plain)
-        .help(tab.currentURL)
+        .onHover { isHovered = $0 }
+        .help(tab.title.isEmpty ? tab.currentURL : "\(tab.title)\(tab.currentURL.isEmpty ? "" : " — " + tab.currentURL)")
+        .accessibilityLabel(tab.title.isEmpty ? "Essential tab" : tab.title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .contextMenu {
             Button("Move to Pinned") { model.retier(tab, to: .pinned) }
             Button("Move to Tabs") { model.retier(tab, to: .normal) }
@@ -139,20 +408,83 @@ private struct EssentialTabButton: View {
     }
 }
 
-private struct TabRow: View {
+// MARK: - TabRowView (Sibling Close Button & Independent Selection)
+
+private struct TabRowView: View {
     let tab: BrowserTab
+    let model: BrowserModel
+    @State private var isHovered = false
+    @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    private var isSelected: Bool {
+        model.selectedTabID == tab.id
+    }
 
     var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: tab.isLoading ? "circle.dotted" : (tab.isLoaded ? "globe" : "moon.zzz"))
-                .foregroundStyle(.secondary)
-                .imageScale(.small)
-                .accessibilityHidden(true)
-            Text(tab.title)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 0)
+        HStack(spacing: 4) {
+            // Main Selection Area
+            Button {
+                model.select(tab)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: tab.isLoading ? "circle.dotted" : (tab.isLoaded ? "globe" : "moon.zzz"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                        .frame(width: 16)
+                        .accessibilityHidden(true)
+
+                    Text(tab.title.isEmpty ? (tab.currentURL.isEmpty ? "New Tab" : tab.currentURL) : tab.title)
+                        .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                        .foregroundStyle(isSelected ? Color.primary : Color.primary.opacity(0.85))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(tab.title.isEmpty ? "New Tab" : tab.title)")
+            .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+
+            // Sibling Close Button on Hover / Selection
+            if isHovered || isSelected {
+                Button {
+                    model.closeTab(tab)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16, height: 16)
+                        .background(Color.primary.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close tab \(tab.title)")
+                .help("Close Tab")
+            }
         }
+        .padding(.horizontal, 10)
+        .frame(height: 34)
+        .background {
+            if isSelected {
+                let activeColor = controlActiveState == .inactive ? Color.primary.opacity(0.06) : (reduceTransparency ? Color.primary.opacity(0.15) : Color.primary.opacity(0.10))
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(activeColor)
+                    .shadow(color: Color.black.opacity(controlActiveState == .inactive ? 0.0 : 0.05), radius: 2, x: 0, y: 1)
+
+                if colorSchemeContrast == .increased {
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Color.primary.opacity(0.3), lineWidth: 1)
+                }
+            } else if isHovered {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.primary.opacity(0.04))
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .onHover { isHovered = $0 }
         .help(tab.currentURL.isEmpty ? "New Tab" : tab.currentURL)
     }
 }

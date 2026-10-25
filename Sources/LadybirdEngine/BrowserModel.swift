@@ -172,6 +172,108 @@ public final class BrowserModel {
         }
     }
 
+    public func deleteWorkspace(_ workspace: Workspace) {
+        guard workspaces.count > 1 else { return }
+        let targetID = workspace.id
+        guard workspaces.contains(where: { $0.id == targetID }) else { return }
+        let isDeletingActive = workspaceManager.activeSpaceID == targetID
+
+        // Collect all tabs belonging to this space
+        let spaceDescriptors = workspaceManager.tabs.filter { $0.workspaceID == targetID }
+        let spaceTabs = spaceDescriptors.compactMap { runtimeTabs[$0.id] }
+
+        // 1. Resolve pending dialogs on tabs in the space to be deleted
+        for tab in spaceTabs {
+            answerPendingDialog(on: tab)
+        }
+
+        // 2. If deleting the active space, detach and clear the presented tab before destroying old handles
+        if isDeletingActive {
+            if let leaving = selectedTab {
+                answerPendingDialog(on: leaving)
+            }
+            // Explicitly clear old presentation before attempting survivor selection, so that
+            // any rehydration failure leaves the view safely cleared rather than bound to a destroyed handle.
+            webView.currentTabID = 0
+            webView.clearSurface()
+            addressText = ""
+
+            _ = workspaceManager.deleteWorkspace(targetID)
+
+            if let survivor = selectedTab {
+                select(survivor, force: true)
+            } else if let first = (essentialTabs + pinnedTabs + normalTabs).first {
+                select(first, force: true)
+            }
+        } else {
+            // Inactive space deletion: active space and current page remain untouched
+            _ = workspaceManager.deleteWorkspace(targetID)
+        }
+
+        // 3. Destroy handles and remove runtime tabs for the deleted space
+        for tab in spaceTabs {
+            if let engineID = tab.engineID {
+                engineToTab.removeValue(forKey: engineID)
+                app?.destroyTab(engineID)
+            }
+            runtimeTabs.removeValue(forKey: tab.id)
+        }
+    }
+
+    @discardableResult
+    public func renameWorkspace(_ workspace: Workspace, name: String) -> Bool {
+        workspaceManager.renameWorkspace(workspace.id, name: name)
+    }
+
+    @discardableResult
+    public func updateWorkspaceIcon(_ workspace: Workspace, icon: String) -> Bool {
+        workspaceManager.updateWorkspaceIcon(workspace.id, icon: icon)
+    }
+
+    @discardableResult
+    public func updateWorkspaceTheme(_ workspace: Workspace, theme: GradientSpec) -> Bool {
+        workspaceManager.updateWorkspaceTheme(workspace.id, theme: theme)
+    }
+
+    @discardableResult
+    public func reorderWorkspaces(_ newOrder: [UUID]) -> Bool {
+        workspaceManager.reorderWorkspaces(newOrder)
+    }
+
+    public func moveWorkspace(fromOffsets: IndexSet, toOffset: Int) {
+        workspaceManager.moveWorkspace(fromOffsets: fromOffsets, toOffset: toOffset)
+    }
+
+    public func visibleTabs(includePinned: Bool = true) -> [BrowserTab] {
+        if includePinned {
+            return essentialTabs + pinnedTabs + normalTabs
+        } else {
+            return essentialTabs + normalTabs
+        }
+    }
+
+    public func selectNextTab(includePinned: Bool = true) {
+        let visible = visibleTabs(includePinned: includePinned)
+        guard !visible.isEmpty else { return }
+        guard let current = selectedTabID, let idx = visible.firstIndex(where: { $0.id == current }) else {
+            if let first = visible.first { select(first) }
+            return
+        }
+        let nextIdx = min(idx + 1, visible.count - 1)
+        select(visible[nextIdx])
+    }
+
+    public func selectPreviousTab(includePinned: Bool = true) {
+        let visible = visibleTabs(includePinned: includePinned)
+        guard !visible.isEmpty else { return }
+        guard let current = selectedTabID, let idx = visible.firstIndex(where: { $0.id == current }) else {
+            if let last = visible.last { select(last) }
+            return
+        }
+        let prevIdx = max(idx - 1, 0)
+        select(visible[prevIdx])
+    }
+
     // MARK: - Tabs
 
     @discardableResult
@@ -429,6 +531,13 @@ public final class BrowserModel {
     }
 
     private func runtime(for descriptors: [TabDescriptor]) -> [BrowserTab] {
-        descriptors.compactMap { runtimeTabs[$0.id] }
+        descriptors.map { descriptor in
+            if let existing = runtimeTabs[descriptor.id] {
+                return existing
+            }
+            let newTab = BrowserTab(descriptor: descriptor)
+            runtimeTabs[descriptor.id] = newTab
+            return newTab
+        }
     }
 }

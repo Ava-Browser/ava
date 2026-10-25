@@ -11,6 +11,7 @@ import SwiftUI
 
 public struct BrowserWindow: View {
     @State private var model = BrowserModel()
+    @State private var spaceActionState = SpaceActionState()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @FocusState private var addressFocused: Bool
 
@@ -48,11 +49,12 @@ public struct BrowserWindow: View {
         // probably subtly wrong, since the collapsed case is the one nobody remembers to test.
         NavigationSplitView(columnVisibility: $columnVisibility) {
             VStack(spacing: 0) {
-                TabSidebar(model: model)
+                TabSidebar(model: model, actionState: spaceActionState)
                 Divider()
-                SpaceDock(model: model)
+                SpaceDock(model: model, actionState: spaceActionState)
             }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 320)
+            .modifier(SpaceActionModifier(model: model, actionState: spaceActionState))
+            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 320)
         } detail: {
             content
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)

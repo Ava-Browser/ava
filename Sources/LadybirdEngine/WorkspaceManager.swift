@@ -88,10 +88,91 @@ public final class WorkspaceManager {
         persist()
     }
 
-    public func renameWorkspace(_ id: UUID, name: String) {
-        guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return }
-        workspaces[index].name = name
+    @discardableResult
+    public func renameWorkspace(_ id: UUID, name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return false }
+        workspaces[index].name = trimmed
         persist()
+        return true
+    }
+
+    @discardableResult
+    public func updateWorkspaceIcon(_ id: UUID, icon: String) -> Bool {
+        let trimmed = icon.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Workspace.isValidIcon(trimmed) else { return false }
+        guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return false }
+        workspaces[index].icon = trimmed
+        persist()
+        return true
+    }
+
+    @discardableResult
+    public func updateWorkspaceTheme(_ id: UUID, theme: GradientSpec) -> Bool {
+        guard let start = GradientSpec.normalizedHex(theme.startHex),
+              let end = GradientSpec.normalizedHex(theme.endHex) else {
+            return false
+        }
+        guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return false }
+        workspaces[index].theme = GradientSpec(startHex: start, endHex: end)
+        persist()
+        return true
+    }
+
+    @discardableResult
+    public func reorderWorkspaces(_ newOrder: [UUID]) -> Bool {
+        let existingIDs = workspaces.map(\.id)
+        guard Set(existingIDs).count == existingIDs.count else { return false }
+        guard Set(newOrder).count == newOrder.count else { return false }
+        guard newOrder.count == workspaces.count else { return false }
+        guard Set(newOrder) == Set(existingIDs) else { return false }
+        let map = Dictionary(uniqueKeysWithValues: workspaces.map { ($0.id, $0) })
+        workspaces = newOrder.compactMap { map[$0] }
+        persist()
+        return true
+    }
+
+    public func moveWorkspace(fromOffsets source: IndexSet, toOffset destination: Int) {
+        guard !workspaces.isEmpty,
+              destination >= 0, destination <= workspaces.count,
+              source.allSatisfy({ $0 >= 0 && $0 < workspaces.count }) else {
+            return
+        }
+        var elements = workspaces
+        let moving = source.map { elements[$0] }
+        for index in source.reversed() {
+            elements.remove(at: index)
+        }
+        let insertIndex = destination - source.filter { $0 < destination }.count
+        guard insertIndex >= 0 && insertIndex <= elements.count else { return }
+        elements.insert(contentsOf: moving, at: insertIndex)
+        workspaces = elements
+        persist()
+    }
+
+    @discardableResult
+    public func deleteWorkspace(_ id: UUID) -> (deletedTabs: [TabID], newActiveSpaceID: UUID?)? {
+        guard workspaces.count > 1 else { return nil }
+        guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return nil }
+
+        let targetWorkspace = workspaces[index]
+        let targetTabIDs = targetWorkspace.tabOrder
+        let targetSet = Set(targetTabIDs)
+
+        // Remove only tabs belonging to this workspace. Essentials (workspaceID == nil) and other spaces survive.
+        tabs.removeAll { targetSet.contains($0.id) || $0.workspaceID == id }
+        workspaces.remove(at: index)
+
+        var newActive: UUID?
+        if activeSpaceID == id {
+            let newIndex = min(index, workspaces.count - 1)
+            newActive = workspaces[newIndex].id
+            activeSpaceID = newActive
+        }
+
+        persist()
+        return (deletedTabs: targetTabIDs, newActiveSpaceID: newActive)
     }
 
     @discardableResult
