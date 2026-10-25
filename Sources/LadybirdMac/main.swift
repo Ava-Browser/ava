@@ -7,6 +7,7 @@
  */
 
 import AppKit
+import LadybirdEngine
 import LadybirdUI
 import SwiftUI
 
@@ -24,11 +25,18 @@ struct LadybirdMacApp: App {
         // avoid one literal would be a worse trade; the citation is the source of truth instead.
         .defaultSize(width: 800, height: 600)
         .windowToolbarStyle(.unified)
+
+        Settings {
+            SettingsView()
+        }
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Apply saved appearance preference before any window appears.
+        AppSettings.shared.applyAppearance()
+
         // A browser is a regular app: closing the window must be able to end it, and it needs a Dock icon.
         // Activation happens when the window actually exists — see PortWebView.viewDidMoveToWindow. Activating here
         // alone leaves the window behind whatever was frontmost, because SwiftUI has not made one yet.
