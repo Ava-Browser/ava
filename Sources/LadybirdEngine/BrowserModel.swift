@@ -175,8 +175,9 @@ public final class BrowserModel {
     // MARK: - Tabs
 
     @discardableResult
-    public func openTab(url: String = "about:blank", tier: TabTier = .normal) -> BrowserTab? {
-        guard app != nil, let descriptor = workspaceManager.createTab(tier: tier, url: url) else { return nil }
+    public func openTab(url: String? = nil, tier: TabTier = .normal) -> BrowserTab? {
+        let destination = url ?? AppSettings.shared.newTabURL
+        guard app != nil, let descriptor = workspaceManager.createTab(tier: tier, url: destination) else { return nil }
         let tab = BrowserTab(descriptor: descriptor)
         runtimeTabs[tab.id] = tab
         select(tab, force: true)
