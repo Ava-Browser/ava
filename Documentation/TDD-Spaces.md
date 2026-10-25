@@ -1,7 +1,9 @@
 # Technical Design Document: Spaces (Workspaces)
 
-**Status:** Proposed · **Owns:** PRD-Spatial-Browser-Ladybird.md, Features 1 & 2 and the
-groundwork for 3–5 · **Board review:** 2026-10-24 (advisor session)
+**Status:** M5 implemented; M5.5 probe recorded. Current sidebar/space-settings work:
+[TDD-SpaceSettings.md](TDD-SpaceSettings.md).
+Original scope: spatial-browser Features 1 & 2 and groundwork for 3–5.
+**Board review:** 2026-10-24 (advisor session).
 
 Related reading order: `Documentation/Architecture.md` → `Rules.md` → `Traps.md` → this file.
 The probes in `Extern/ladybird/Tests/LibWebView/TestNative*` remain the executable spec for
@@ -132,8 +134,9 @@ process/crash isolation and Chromium-style deep separation.
 
 ## 4. Persistence design
 
-Store: SwiftData or SQLite (decision left to implementer; the schema below is the contract,
-not the library). One write per mutation; app termination needs no flush.
+Implemented store: `GraphStore`, an atomically replaced Codable JSON graph (see §8).
+The original SwiftData/SQLite proposal was not adopted. Reuse the existing store; do not
+introduce a second persistence system. One write per mutation; app termination needs no flush.
 
 Minimum tables: `Workspace`, `TabDescriptor`, plus `ProfileMeta(schemaVersion, activeSpaceID,
 lastOpenTabPerSpace)`.
