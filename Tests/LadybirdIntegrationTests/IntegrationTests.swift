@@ -6,6 +6,7 @@
  * Links the engine (so it needs the shim dylib) but never starts it: these are pure conversions and pure bookkeeping.
  */
 
+import Foundation
 import Testing
 
 @testable import LadybirdEngine
@@ -45,31 +46,122 @@ struct WheelDeltaTests {
     }
 }
 
-@Suite("Tab teardown ordering")
+@Suite("Workspace persistence")
 @MainActor
-struct TabTeardownTests {
-    /// Closing the selected tab must leave the selection pointing at a survivor that is still in the list.
-    ///
-    /// This is the invariant that a crash-on-close hides behind: the engine tab is destroyed last, and anything that
-    /// reads the selection between the removal and the re-selection would address a tab that no longer exists. The
-    /// engine is not started here, so `destroyTab` is a no-op — this asserts the bookkeeping order, which is the part
-    /// that can regress without a device in the loop.
-    @Test("Closing the middle tab selects a neighbour that still exists")
-    func closingMiddleKeepsSelectionValid() {
-        let model = BrowserModel()
-        // Teardown path with no engine: these must not trap, and must leave a coherent empty model.
+struct WorkspacePersistenceTests {
+    private func temporaryStore() -> GraphStore {
+        GraphStore(url: FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("spaces.json"))
+    }
+
+    @Test("Two spaces and five tabs restore with their tiers, order and active selection")
+    func graphRoundTrip() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+
+        let manager = WorkspaceManager(store: store)
+        let first = manager.createWorkspace(name: "Personal", icon: "house.fill")
+        let essential = try #require(manager.createTab(tier: .essential, url: "https://mail.example"))
+        let pinned = try #require(manager.createTab(tier: .pinned, url: "https://docs.example"))
+        let personalSelected = try #require(manager.createTab(tier: .normal, url: "https://one.example"))
+
+        let second = manager.createWorkspace(name: "Work", icon: "briefcase.fill")
+        let workPinned = try #require(manager.createTab(tier: .pinned, url: "https://issues.example"))
+        let selected = try #require(manager.createTab(tier: .normal, url: "https://build.example"))
+        manager.selectTab(selected.id)
+
+        let restored = WorkspaceManager(store: store)
+        #expect(restored.workspaces.map(\.name) == ["Personal", "Work"])
+        #expect(restored.activeSpaceID == second.id)
+        #expect(restored.activeTabID == selected.id)
+        #expect(restored.tabs(in: .essential).map(\.id) == [essential.id])
+        restored.selectWorkspace(first.id)
+        #expect(restored.activeTabID == personalSelected.id)
+        #expect(restored.tabs(in: .pinned).map(\.id) == [pinned.id])
+        #expect(restored.tabs(in: .normal).count == 1)
+        restored.selectWorkspace(second.id)
+        #expect(restored.tabs(in: .pinned).map(\.id) == [workPinned.id])
+        #expect(restored.tabs(in: .normal).map(\.id) == [selected.id])
+    }
+
+    @Test("Restored descriptors start unloaded until selected with an engine")
+    func restoredTabsAreLazy() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+
+        let manager = WorkspaceManager(store: store)
+        _ = manager.createWorkspace(name: "Only")
+        _ = try #require(manager.createTab(tier: .pinned, url: "https://one.example"))
+        _ = try #require(manager.createTab(tier: .normal, url: "https://two.example"))
+
+        let model = BrowserModel(store: store)
+        #expect(model.tabs.count == 2)
+        #expect(model.tabs.allSatisfy { !$0.isLoaded })
+        #expect(model.selectedTab?.currentURL == "https://two.example")
+    }
+
+    @Test("An unreadable graph is preserved before fresh state can replace it")
+    func unreadableGraphIsBackedUp() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: store.url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let broken = Data("not json".utf8)
+        try broken.write(to: store.url)
+
+        _ = WorkspaceManager(store: store)
+
+        #expect(try Data(contentsOf: store.url.appendingPathExtension("unreadable")) == broken)
+    }
+
+    @Test("Retiering writes through immediately")
+    func retierWritesThrough() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+
+        let manager = WorkspaceManager(store: store)
+        _ = manager.createWorkspace(name: "Only")
+        let tab = try #require(manager.createTab(tier: .normal))
+        manager.retier(tab.id, to: .pinned)
+
+        let restored = WorkspaceManager(store: store)
+        #expect(restored.tabs(in: .normal).isEmpty)
+        #expect(restored.tabs(in: .pinned).map(\.id) == [tab.id])
+    }
+}
+
+@Suite("Runtime teardown")
+@MainActor
+struct RuntimeTeardownTests {
+    private func temporaryStore() -> GraphStore {
+        GraphStore(url: FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("spaces.json"))
+    }
+
+    @Test("Closing with no engine and no tab is a no-op")
+    func closeWithoutEngine() {
+        let model = BrowserModel(store: temporaryStore())
         model.closeSelectedTab()
         #expect(model.tabs.isEmpty)
         #expect(model.selectedTabID == nil)
     }
 
-    /// A model that never started must still shut down cleanly — `applicationWillTerminate` arrives even when the
-    /// engine failed to launch, because the failure is shown in-window rather than aborting the app.
-    @Test("Shutdown without a running engine is a no-op, not a trap")
-    func shutdownWithoutEngine() {
-        let model = BrowserModel()
+    /// Shutdown clears only the disposable engine cache. The descriptor graph is the durable source of truth and must
+    /// survive applicationWillTerminate — clearing it here would make quit itself erase the next launch.
+    @Test("Shutdown without a running engine preserves the durable graph")
+    func shutdownWithoutEnginePreservesGraph() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+        let manager = WorkspaceManager(store: store)
+        _ = manager.createWorkspace(name: "Only")
+        let tab = try #require(manager.createTab(url: "https://example.com"))
+
+        let model = BrowserModel(store: store)
         model.shutdown()
-        #expect(model.selectedTabID == nil)
-        #expect(model.tabs.isEmpty)
+
+        #expect(model.selectedTabID == tab.id)
+        #expect(model.tabs.map(\.id) == [tab.id])
+        #expect(model.tabs.allSatisfy { !$0.isLoaded })
     }
 }

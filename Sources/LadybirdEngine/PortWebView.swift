@@ -42,12 +42,15 @@ public final class PortWebView: NSView {
         layer?.masksToBounds = true
 
         contentLayer.isOpaque = true
+        contentLayer.contentsGravity = .topLeft
+        contentLayer.masksToBounds = true
         // Without this every frame cross-fades in and geometry changes slide (TestNativePresentation).
         contentLayer.actions = [
             "contents": NSNull(),
             "contentsRect": NSNull(),
             "contentsScale": NSNull(),
             "bounds": NSNull(),
+            "position": NSNull(),
         ]
         layer?.addSublayer(contentLayer)
     }
@@ -253,6 +256,15 @@ public final class PortWebView: NSView {
         // Borrowed from the engine; the layer retains it on assignment, on this same stack (S5). The cast itself lives
         // in Bridge (S1).
         contentLayer.contents = surface.ref
+        CATransaction.commit()
+    }
+
+    /// Removes the previous tab's retained surface while the newly selected tab has no frame yet. Leaving it attached
+    /// shows the wrong page until paint #1, which is both a visual glitch and a privacy leak across tabs.
+    public func clearSurface() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        contentLayer.contents = nil
         CATransaction.commit()
     }
 

@@ -3,21 +3,13 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * One tab's UI-side state. The engine tab id is the identity: the engine keeps the page alive, and this only records
- * what the chrome needs to draw a row and what the address bar should show when the tab is selected.
- *
- * The surface is deliberately NOT stored here. It is borrowed for the duration of the paint callback (S5), so caching
- * one would be the only remaining use-after-free in this design. Switching tabs re-reads the tab's current frame from
- * the engine instead, which is always valid at call time.
+ * One tab's runtime state. Its durable identity and metadata live in TabDescriptor; its engine handle is disposable.
  */
 
 import Foundation
 import Observation
 
 /// A dialog the engine is blocked on for one tab.
-///
-/// `id` exists so SwiftUI can tell a re-presented dialog apart from the previous one: without it, a second alert on the
-/// same tab would reuse the sheet's identity and the presented text would not update.
 public enum TabDialog: Identifiable, Equatable {
     case alert(id: UInt64, message: String)
     case confirm(id: UInt64, message: String)
@@ -44,42 +36,46 @@ public enum TabDialog: Identifiable, Equatable {
 @MainActor
 @Observable
 public final class BrowserTab: Identifiable {
-    /// The engine's tab handle from `LbTabCreate`, and the identity SwiftUI uses. Stable for the tab's life.
-    public let id: UInt64
-    public private(set) var currentURL: String = ""
+    /// Stable across launches and independent of the engine's opaque u64 handle.
+    public let id: TabID
+    /// nil means unloaded. The descriptor remains and selecting it rehydrates this cache entry.
+    public private(set) var engineID: UInt64?
+    public private(set) var currentURL: String
+    public private(set) var title: String
     public private(set) var isLoading: Bool = false
-    /// The dialog this tab's page is stopped on, if any. At most one: the engine blocks the page, so it cannot ask twice.
     public private(set) var dialog: TabDialog?
 
-    init(id: UInt64) {
-        self.id = id
+    init(descriptor: TabDescriptor, engineID: UInt64? = nil) {
+        id = descriptor.id
+        self.engineID = engineID
+        currentURL = descriptor.url
+        title = descriptor.title
     }
 
-    /// What the sidebar row shows. The ABI has no page-title callback yet, so the host is the best available label;
-    /// falling back to the URL keeps about:blank and data: pages identifiable rather than blank.
-    public var title: String {
-        if let host = URL(string: currentURL)?.host(), !host.isEmpty {
-            return host
-        }
-        if currentURL.isEmpty || currentURL == "about:blank" {
-            return "New Tab"
-        }
-        return currentURL
+    public var isLoaded: Bool { engineID != nil }
+
+    func attach(engineID: UInt64) {
+        self.engineID = engineID
+    }
+
+    func detach() {
+        engineID = nil
+        isLoading = false
+        dialog = nil
     }
 
     func update(url: String) {
         currentURL = url
+        if let host = URL(string: url)?.host(), !host.isEmpty {
+            title = host
+        } else if url.isEmpty || url == "about:blank" {
+            title = "New Tab"
+        } else {
+            title = url
+        }
     }
 
-    func setLoading(_ loading: Bool) {
-        isLoading = loading
-    }
-
-    func present(dialog: TabDialog) {
-        self.dialog = dialog
-    }
-
-    func clearDialog() {
-        dialog = nil
-    }
+    func setLoading(_ loading: Bool) { isLoading = loading }
+    func present(dialog: TabDialog) { self.dialog = dialog }
+    func clearDialog() { dialog = nil }
 }

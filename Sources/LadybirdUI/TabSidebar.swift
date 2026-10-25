@@ -3,11 +3,7 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * The vertical tab list, and the only tab list — there is no top tab strip. One workspace, no spaces or pinning.
- *
- * Uses `List` with a selection binding rather than a hand-rolled stack of buttons: it brings keyboard navigation,
- * VoiceOver row semantics and the system selection highlight for free, and those are exactly the things a custom list
- * gets wrong.
+ * The active space's three tab tiers. Tier drops are durable model mutations, not view-local rearrangement.
  */
 
 import LadybirdEngine
@@ -17,32 +13,129 @@ struct TabSidebar: View {
     @Bindable var model: BrowserModel
 
     var body: some View {
-        // The list owns the whole column. The "new tab" button used to sit in a hand-drawn bar under a manual Divider;
-        // the divider was a second separator immediately above the split view's own, visibly two lines where the system
-        // draws one. The button itself lives in the window toolbar, at the field's trailing edge.
         List(selection: selection) {
-            ForEach(model.tabs) { tab in
-                TabRow(tab: tab)
-                    .tag(tab.id)
-                    .contextMenu {
-                        Button("Close Tab") { model.closeTab(tab) }
+            Section("Essentials") {
+                if model.essentialTabs.isEmpty {
+                    DropHint()
+                        .dropDestination(for: String.self) { ids, _ in retier(ids, to: .essential) }
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 46), spacing: 6)], spacing: 6) {
+                        ForEach(model.essentialTabs) { tab in
+                            EssentialTabButton(tab: tab, model: model)
+                                .draggable(tab.id.raw.uuidString)
+                        }
                     }
+                    .padding(.vertical, 3)
+                    .dropDestination(for: String.self) { ids, _ in retier(ids, to: .essential) }
+                }
+            }
+
+            Section("Pinned") {
+                if model.pinnedTabs.isEmpty {
+                    DropHint()
+                        .dropDestination(for: String.self) { ids, _ in retier(ids, to: .pinned) }
+                } else {
+                    ForEach(model.pinnedTabs) { tab in
+                        TabRow(tab: tab)
+                            .tag(tab.id)
+                            .draggable(tab.id.raw.uuidString)
+                            .dropDestination(for: String.self) { ids, _ in retier(ids, to: .pinned) }
+                            .contextMenu { tabMenu(tab) }
+                    }
+                }
+            }
+
+            Section("Tabs") {
+                ForEach(model.normalTabs) { tab in
+                    TabRow(tab: tab)
+                        .tag(tab.id)
+                        .draggable(tab.id.raw.uuidString)
+                        .dropDestination(for: String.self) { ids, _ in retier(ids, to: .normal) }
+                        .contextMenu { tabMenu(tab) }
+                }
+                if model.normalTabs.isEmpty {
+                    DropHint()
+                        .dropDestination(for: String.self) { ids, _ in retier(ids, to: .normal) }
+                }
+            }
+
+            if !model.normalTabs.isEmpty {
+                Section {
+                    Button("Close All Unpinned", role: .destructive, action: model.closeAllUnpinned)
+                }
             }
         }
         .listStyle(.sidebar)
-        // The list's own background; the sidebar is chrome and should take the system material, not a colour.
         .scrollContentBackground(.hidden)
     }
 
-    /// A `List` selection binding is `UInt64?` over the tags; an empty sidebar has no valid selection at all.
-    private var selection: Binding<UInt64?> {
+    private var selection: Binding<TabID?> {
         Binding(
             get: { model.selectedTabID },
-            set: { newValue in
-                guard let newValue, let tab = model.tabs.first(where: { $0.id == newValue }) else { return }
+            set: { id in
+                guard let id, let tab = model.tabs.first(where: { $0.id == id }) else { return }
                 model.select(tab)
             }
         )
+    }
+
+    @ViewBuilder
+    private func tabMenu(_ tab: BrowserTab) -> some View {
+        if model.workspaceManager.descriptor(tab.id)?.tier != .pinned {
+            Button("Pin Tab") { model.retier(tab, to: .pinned) }
+        }
+        if model.workspaceManager.descriptor(tab.id)?.tier != .essential {
+            Button("Make Essential") { model.retier(tab, to: .essential) }
+        }
+        if model.workspaceManager.descriptor(tab.id)?.tier != .normal {
+            Button("Move to Tabs") { model.retier(tab, to: .normal) }
+        }
+        Divider()
+        Button("Close Tab", role: .destructive) { model.closeTab(tab) }
+    }
+
+    private func retier(_ values: [String], to tier: TabTier) -> Bool {
+        guard let value = values.first, let uuid = UUID(uuidString: value),
+              let tab = model.tabs.first(where: { $0.id == TabID(raw: uuid) }) else { return false }
+        model.retier(tab, to: tier)
+        return true
+    }
+}
+
+private struct DropHint: View {
+    var body: some View {
+        Text("Drop a tab here")
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
+            .contentShape(Rectangle())
+    }
+}
+
+private struct EssentialTabButton: View {
+    let tab: BrowserTab
+    let model: BrowserModel
+
+    var body: some View {
+        Button { model.select(tab) } label: {
+            VStack(spacing: 4) {
+                Image(systemName: tab.isLoading ? "circle.dotted" : "globe")
+                    .frame(width: 28, height: 28)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+                Text(tab.title)
+                    .font(.caption2)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .help(tab.currentURL)
+        .contextMenu {
+            Button("Move to Pinned") { model.retier(tab, to: .pinned) }
+            Button("Move to Tabs") { model.retier(tab, to: .normal) }
+            Divider()
+            Button("Close Tab", role: .destructive) { model.closeTab(tab) }
+        }
     }
 }
 
@@ -51,17 +144,13 @@ private struct TabRow: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            // One glyph, two states: no spinner. A spinner is a timer-driven animation, and the engine reports loads
-            // through callbacks already, so a static state change is both cheaper and honest about what we know.
-            Image(systemName: tab.isLoading ? "circle.dotted" : "globe")
+            Image(systemName: tab.isLoading ? "circle.dotted" : (tab.isLoaded ? "globe" : "moon.zzz"))
                 .foregroundStyle(.secondary)
                 .imageScale(.small)
                 .accessibilityHidden(true)
-
             Text(tab.title)
                 .lineLimit(1)
                 .truncationMode(.middle)
-
             Spacer(minLength: 0)
         }
         .help(tab.currentURL.isEmpty ? "New Tab" : tab.currentURL)

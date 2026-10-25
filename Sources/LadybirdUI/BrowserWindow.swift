@@ -24,7 +24,7 @@ public struct BrowserWindow: View {
     ///
     /// This exists because there is otherwise no way to point the app at a page without driving the UI, which a
     /// benchmark or a regression script cannot do reliably.
-    private static var launchURL: String {
+    private static var launchURLArgument: String? {
         let args = CommandLine.arguments
         if let i = args.firstIndex(of: "--url"), args.index(after: i) < args.endIndex {
             return args[args.index(after: i)]
@@ -33,8 +33,10 @@ public struct BrowserWindow: View {
         for arg in args where arg.hasPrefix("--url=") {
             return String(arg.dropFirst("--url=".count))
         }
-        return "https://example.com"
+        return nil
     }
+
+    private static var launchURL: String { launchURLArgument ?? "https://example.com" }
 
     public var body: some View {
         // One workspace: the sidebar is the only tab list, and the page sits beside it.
@@ -45,8 +47,12 @@ public struct BrowserWindow: View {
         // taking keystrokes are all behaviours an HSplitView does not have and would each have to be rebuilt by hand —
         // probably subtly wrong, since the collapsed case is the one nobody remembers to test.
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            TabSidebar(model: model)
-                .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 320)
+            VStack(spacing: 0) {
+                TabSidebar(model: model)
+                Divider()
+                SpaceDock(model: model)
+            }
+            .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 320)
         } detail: {
             content
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
@@ -69,7 +75,12 @@ public struct BrowserWindow: View {
             .modifier(TitleHiddenInToolbar())
             // `task` runs once per view identity, which is exactly once per window. Starting the engine from `onAppear`
             // would re-run whenever SwiftUI re-appears the view.
-            .task { model.start(homeURL: Self.launchURL) }
+            .task {
+                model.start(
+                    homeURL: Self.launchURL,
+                    overrideRestoredTab: Self.launchURLArgument != nil
+                )
+            }
             .toolbar {
                 // Navigation sits at the window's leading edge and the field takes the flexible middle slot, which is
                 // the arrangement Safari and Mail use. Grouping all of it into one principal item pulled the buttons
