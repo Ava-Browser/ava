@@ -1,8 +1,10 @@
 # PRD: Ava Settings — simple controls, real capabilities
 
-**Status:** Product requirements ready for TDD; implementation capability-gated.
+**Status:** Product requirements reviewed; [TDD-Settings.md](TDD-Settings.md) finalized.
+Implementation remains capability-gated; Phase 0 search/migration evidence work is authorized.
 **Updated:** 2026-10-25. Supersedes the original small General/Appearance/About brief.
-**Product owner/reviewer:** coordinator. TDD author: supervised settings-design worker.
+**Product owner/final reviewer:** coordinator. TDD author: supervised settings-design worker
+(Gemini 3.8 Flash/high), revised after review; coordinator finalized the design.
 **Platforms:** macOS 14.4+, including unsigned development builds.
 
 ## 1. Outcome
