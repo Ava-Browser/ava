@@ -71,22 +71,33 @@ and `containerID` ship in the persistence schema from day one even while unused 
 columns to a live store later is a migration; dormant nulls cost nothing. The schema allows
 nesting depth; the UI ships single-level folders (Zen/Arc behaviour).
 
-**Profiles (yes over time; NO simultaneously in one process — engine edge, measured).**
-Profiles are Application-level state (storage root, cookie jars, caches). Two hard facts,
-both verified in this codebase rather than assumed:
+**Profiles (yes over time; simultaneous = gated on the SAME probe as containers).**
+The first version of this section declared simultaneous profiles impossible; that was wrong,
+and the correction matters. Decompose a profile into its ingredients:
+
+| Ingredient | Needs | Verdict |
+|---|---|---|
+| Identity (name, avatar, spaces/tabs) | app-side store per profile | buildable |
+| Own history/bookmarks/settings | app-side persistence | buildable |
+| Isolated cookies/logins | named sessions with persistent jars | **the §5 containers probe** |
+| Own storage directory | separate per-profile root | NOT needed as such: Chrome keeps all profiles under ONE root as subdirs; a fixed Application-level root is compatible with that layout |
+| Per-profile process isolation | per-profile engine | genuinely blocked |
+
+Two engine facts remain hard boundaries, both measured:
 
 1. `WebView::Application` asserts `VERIFY(!s_the)` — exactly one engine per process (this was
    the second-BrowserModel crash of the sidebar milestone).
 2. A profile's storage root is fixed at Application construction (see `Profiles/default` in
    helper process argv).
 
-Therefore: multiple profiles OVER TIME (switch the active profile, others' graphs persist in
-their own stores) is app-side and supported by the model. Multiple profiles SIMULTANEOUSLY in
-one process is impossible without an engine change; per-window profiles implies per-process
-profiles, a heavyweight architecture decision, not a milestone. Containers (§5) were designed
-to absorb the dominant profile use-case (work-vs-personal logins) inside one profile; profiles
-are deferred to PRD Phase 5 class, with the schema profile-scoped from day one so their
-arrival needs no data-model rework.
+But profiles-as-named-sessions never need a second engine, and fact 2 permits one root with
+per-session storage beneath it — which is exactly the Chrome layout. The engine already runs
+multiple sessions simultaneously (normal + private coexist). So: multiple profiles OVER TIME
+is fully app-side; multiple profiles SIMULTANEOUSLY reduces to the §5 probe. On a green
+verdict, simultaneous profiles are buildable as containers + identity + per-profile app-side
+stores, and ride Milestone 6 rather than Phase 5. On red, the same upstream-shaped patch
+discussion applies as for containers. The genuinely deferred pieces are only per-profile
+process/crash isolation and Chromium-style deep separation.
 
 ### Invariants
 
@@ -193,7 +204,7 @@ phases; none implied by this TDD.
 | Restoring >50 tabs at launch spawns 50 processes at once | none yet | lazy rehydrate-by-default at scale (§4) |
 | Engine tab ids recycled after kill/reload confuse the cache | R2 opaque handles | handle map is rebuilt on rehydrate; never persisted |
 | Dialog-milestone invariant (absence-or-all-four) on new sessions | audit / Traps.md | dialogs bind per TAB, not per session; switch-away answers pending first (already shipped) |
-| Simultaneous multi-profile assumed by a phase plan | engine boundary (§2.1) | one active profile per process, standing rule; simultaneous profiles gated on an engine probe + architecture decision, not a milestone |
+| Simultaneous multi-profile via per-profile ENGINES assumed by a phase plan | engine boundary (§2.1) | multi-engine per process is impossible (`VERIFY(!s_the)`); profiles-as-named-sessions avoids it and is gated on the containers probe |
 
 ---
 
@@ -201,4 +212,7 @@ phases; none implied by this TDD.
 
 - 2026-10-24 — Durable-graph/ephemeral-engine split adopted as the governing principle
   (advisor session); deadlines: model split precedes any space UI.
+- 2026-10-24 — CORRECTION: simultaneous profiles are NOT engine-blocked; they decompose into
+  named sessions (§5 probe) plus app-side identity/stores, per the profile-ingredient table
+  in §2.1. Only per-profile process isolation stays deferred.
 - (pending, M5.5) — containers probe verdict.
