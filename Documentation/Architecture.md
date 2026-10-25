@@ -4,7 +4,7 @@
 
 ```
 ┌──────────────────────────────┐        ┌─────────────────────────────────┐
-│ ladybird (fork)              │        │ ladybird-mac (this repo)        │
+│ ava-engine (Ladybird fork)   │        │ ava (this repo)                 │
 │                              │        │                                 │
 │ Libraries/                   │        │ Sources/LadybirdUI    SwiftUI   │
 │ Services/                    │        │ Sources/LadybirdEngine  AppKit  │
@@ -16,7 +16,7 @@
 ```
 
 The fork is a **dependency you happen to control**, not a workspace. The app repo references it
-via `Extern/ladybird` (a submodule once the fork has a remote; a symlink during bring-up). Pins
+via the `Extern/ladybird` submodule, fetched from [ava-engine](https://github.com/Ava-Browser/ava-engine). Pins
 advance deliberately, like vcpkg pins advance in ladybird — never incidentally.
 
 ## Layers, and why the boundary is where it is
@@ -73,9 +73,10 @@ This is deliberate and should not be "improved" into a threads design:
 
 See `Rules.md` R5 for the invariant, and `Documentation/Decisions/` for the reasoning in full.
 
-## Known gaps
+## Known gaps recorded during the spike
 
-Not architecture risks; each is product work with a defined shape.
+This section records the original spike's limits, not the current feature inventory.
+See the [README](../README.md) for today's status. Each gap was product work with a defined shape.
 
 - **Packaging.** Helper process placement, bundle-relative resource root, codesigning entitlements
   for Mach-port helper spawn, signing the shim. Nothing here has been tested as a signed `.app`.
@@ -97,8 +98,7 @@ Not architecture risks; each is product work with a defined shape.
 
 ## Status of the fork
 
-The work lives on branch `ava-port` in `Extern/ladybird`, one commit on top of upstream
-`0203ab20ca`: `LibPort` plus the three probes, 8 files, additive only. It is **not pushed** — the
-fork has no remote yet, so `Extern/ladybird` is a symlink rather than a submodule. When the fork
-gets a remote, swap the symlink for a submodule pinned to that commit; nothing else needs to
-change.
+`Extern/ladybird` is now a pinned Git submodule, fetched from the public engine fork
+configured in [`.gitmodules`](../.gitmodules). The port and native probes live on its
+`ava-port` branch. Clone recursively; a normal submodule checkout is detached at the
+recorded commit. Advance that pin deliberately, separately from unrelated app changes.

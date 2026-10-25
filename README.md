@@ -1,73 +1,87 @@
-# ladybird-mac
+# Ava
 
-A native macOS frontend for the [Ladybird](https://ladybird.org) browser engine, in Swift.
+A native macOS browser powered by the [Ladybird](https://ladybird.org) web engine, built with Swift and SwiftUI.
 
-Ladybird's Qt frontend is one *client* of `LibWebView`, not a requirement: the engine exposes a
-toolkit-agnostic callback API and publishes frames as shared IOSurfaces. This repo replaces that
-client with Swift/SwiftUI, talking to the engine through a small C ABI.
+Ava is exploring a calmer way to browse: vertical tabs, persistent Spaces, and native Mac controls. Inspired by the spatial browsing ideas of Arc and Zen, Ava is an independent project—not affiliated with either browser or the Ladybird project.
 
-```
-Extern/ladybird/Libraries/LibPort/ladybird_port.h   ← the entire boundary: 79 lines of C11
-```
+**Early development.** Ava runs locally, but it is not ready to replace your everyday browser. Expect bugs, incomplete features, and website compatibility limitations. There are no signed releases yet.
 
-## Status
+## What works today
 
-The architecture is proven end to end — a Swift app has rendered a real page, taken input,
-resized, and quit cleanly through this ABI. What exists today is the scaffolding plus a link test.
+- Native browser window with vertical tabs and back/forward navigation
+- Spaces with Essential, pinned, and normal tabs
+- Persistent tab organization and lazy restoration of saved tabs
+- Mouse, keyboard, and scrolling input
+- JavaScript alert, confirm, prompt, and leave-page dialogs
+- Native Settings for appearance and new-tab destination
 
-See `Documentation/Architecture.md` for the layer map and the known gaps (packaging is the next
-real unknown; everything else is product work).
+Spaces currently organize tabs; they **do not provide separate login or storage containers**. Container support is experimental and is not available as a finished feature.
 
-## Quick start
+## How it is built
 
-The fork's work lives on branch `native-port` — check it out before building:
+Ava provides the Mac interface; Ladybird handles web content, JavaScript, networking, and rendering. A small C interface connects the C++ engine to the Swift application. Finished page frames are displayed through macOS IOSurfaces.
 
-```bash
-git -C Extern/ladybird checkout native-port
-```
+The app and engine live in separate repositories, with the engine fork pinned under `Extern/ladybird`. This keeps Mac interface development separate from engine changes.
 
-```bash
-git clone --recurse-submodules <this-repo>
-cd ladybird-mac
+## Build and run
 
-# Build the fork once (hours on a cold tree):
-cd Extern/ladybird && ./Meta/ladybird.py build --build-dir Build/release && cd ..
+### Requirements
 
-./Scripts/build.sh    # shim (CMake) + Swift package
-./Scripts/run.sh      # dev run; exports LADYBIRD_BINARY_PATH and DYLD_LIBRARY_PATH
-```
+- macOS 14.4 or later
+- Xcode command-line tools with Swift 6 or later
+- Bash 4 or later for the layer guard (`brew install bash`); macOS's bundled Bash is too old
+- The dependencies required by Ladybird's [build instructions](https://github.com/LadybirdBrowser/ladybird/blob/master/Documentation/BuildInstructionsLadybird.md)
 
-`Scripts/run.sh` sets dev-only environment for finding helper processes. Production replaces both
-variables with an `.app` bundle and `@loader_path` rpaths — see `Documentation/Architecture.md`.
-
-## Documentation
-
-| File | Contents |
-|---|---|
-| `Documentation/Architecture.md` | Layer map, why the boundary is where it is, known gaps |
-| `Documentation/Rules.md` | R1–R8, the contract rules, and what each one prevents |
-| `Documentation/Traps.md` | Measured engine gotchas, each with its fix |
-| `Documentation/Decisions/` | Why the foundation looks like this (two repos, SwiftUI, C ABI, one loop) |
-
-`AGENTS.md` covers how to work in this repo (read order, layer rules, fork discipline).
-
-## The fork
-
-`Extern/ladybird` is upstream plus exactly one added directory (`Libraries/LibPort/`) and the
-probes under `Tests/LibWebView/TestNative*`. Nothing else may change there.
-
-The probes are the regression net for engine behaviour and the executable spec for anything an
-agent might otherwise guess from the Qt frontend:
+The engine's first build can take several hours and requires substantial disk space.
 
 ```bash
-Extern/ladybird/Build/release/bin/TestNativePresentation   # paint + IOSurface -> CALayer
-Extern/ladybird/Build/release/bin/TestNativeInput          # wheel scroll + click navigation
-Extern/ladybird/Build/release/bin/TestNativeEventLoop      # LibCore pumped from CFRunLoop
+git clone --recurse-submodules https://github.com/Ava-Browser/ava.git ava
+cd ava
+
+# Build the engine and its dependencies.
+(cd Extern/ladybird && ./Meta/ladybird.py build --build-dir Build/release)
+
+# Build the bridge and Swift application.
+./Scripts/build.sh
+
+# Launch the local development app.
+./Scripts/run.sh
 ```
 
-## Checks
+The runner creates `.build/Ava.app` and configures development paths for the engine's libraries and helper processes. This is a local development bundle, not a self-contained distributable application.
+
+### Checks
 
 ```bash
-./Scripts/check-layers.sh    # R2, R3, R4, R7 + layer boundaries
-swift build --build-tests && swift test
+swift test
+bash ./Scripts/check-layers.sh
 ```
+
+Use the Homebrew-installed Bash for the layer check (on Apple Silicon, `/opt/homebrew/bin/bash`). GitHub Actions compiles the application and test targets and checks layer boundaries; it does not link the engine or execute tests.
+
+The layer check validates architectural boundaries and the allowed changes to the engine fork. Native engine probes live under `Extern/ladybird/Tests/LibWebView/TestNative*`; some open windows and require an interactive desktop session.
+
+## Project documentation
+
+- [Architecture](Documentation/Architecture.md) — modules and the engine boundary
+- [Contract rules](Documentation/Rules.md) — threading, presentation, and layer constraints
+- [Spaces design](Documentation/TDD-Spaces.md) — persistent organization and planned container support
+- [Settings requirements](Documentation/PRD-Settings.md) — scope of native preferences
+- [Development notes](Documentation/Traps.md) — known pitfalls and lessons from testing
+- [Agent instructions](AGENTS.md) — operating rules for coding agents
+
+## Contributing and security
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Bug reports should include your macOS version, commit, and reproduction steps, with private browsing data removed.
+
+For vulnerabilities, follow [SECURITY.md](SECURITY.md); do not post sensitive details in public issues. Ava is experimental and should not be used for sensitive browsing.
+
+## License
+
+The application source is licensed under [BSD-2-Clause](LICENSE), consistent with its existing source headers. Ladybird and bundled dependencies retain their own licenses and notices; see the engine checkout's `LICENSE` and third-party notices.
+
+## Project and credits
+
+Find the project at [Ava Browser on GitHub](https://github.com/Ava-Browser).
+
+Ava would not be possible without the Ladybird engine and its contributors. Upstream source headers and license notices are retained; engine and third-party licensing information is included in the engine checkout.

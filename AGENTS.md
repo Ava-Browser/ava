@@ -1,4 +1,4 @@
-# ladybird-mac — agent rules
+# Ava — agent rules
 
 ## Read order, before any task
 
