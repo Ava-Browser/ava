@@ -155,8 +155,9 @@ never duplicate the space graph or per-space editor state.
 - Custom: one compact editor, with address/IP, transport **TLS (encrypted)** or
   **UDP (unencrypted)**, and advanced port + "Validate DNSSEC locally". Defaults: UDP 53,
   TLS 853 when no explicit port is entered. Preserve a deliberate custom port across edits.
-- Choose TLS as the proposed default for a NEW custom draft, but preserve the effective
-  existing transport. TLS validation/bootstrap behavior remains a probe gate, not a claim.
+- Choose TLS as the proposed default for a NEW custom draft, but preserve the existing
+  desired/configured DNS transport (excluding CLI- or proxy-forced state from draft defaults).
+  TLS validation/bootstrap behavior remains a probe gate, not a claim.
 - Validate full candidate on Save: host/IP supported by the engine, port 1–65535, no URL
   scheme/path/userinfo in a DNS host, correct IPv6 handling if supported. Invalid drafts
   never replace previous settings or break browsing while typing. Cancel is non-mutating.

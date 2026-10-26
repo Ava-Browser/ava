@@ -25,6 +25,8 @@ Ownership stays UI → `@MainActor LadybirdEngine` → `LadybirdBridge` → C11 
 Only Engine may use AppKit/CoreFoundation. UI never imports CLadybirdPort; Bridge never
 imports AppKit/SwiftUI; Unmanaged stays in Bridge. No DispatchQueue, Task.detached, second
 loop, display link, or blocking callback. Retain the current main-thread CommonModes pump.
+Callers must invoke synchronous engine/bridge operations while already on the existing
+main-thread pump; no actor hop or suspension is permitted.
 
 Fork edits: LibPort, TestNative* probes, their permitted CMake registrations ONLY. A genuine
 LibWebView/helper change needs a separate upstream-shaped proposal and approval. App/fork
@@ -99,8 +101,10 @@ Do not clear UserDefaults domains, browsing data, or workspace state during reco
    provider/off choice before transmitting a prose query; do not silently choose fallback
    or claim the user disabled search. Missing-file first-run fallback remains unchanged.
 4. Validate/import without silently deleting existing HTTP/custom provider values. Such
-   imported entries may be shown read-only pending secure editing policy. Do not send a
-   query to a different provider because an imported entry is unavailable.
+   imported entries may be shown read-only pending secure editing policy. An imported
+   HTTP entry must not execute: resolve it to an unavailable state, and send no query
+   to it or to a different provider. Enable it only after the user replaces it with an
+   HTTPS template or selects an explicit off state.
 5. Atomically save the snapshot, then apply managed values through typed APIs. On import
    save failure, do not replace the engine's previous settings with defaults. Show a
    recoverable migration error and keep Settings read-only for those values.

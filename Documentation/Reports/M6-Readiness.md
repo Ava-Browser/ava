@@ -1,7 +1,7 @@
 # Ava Milestone 6 Readiness Audit: Gated Analysis of Containers, Unload Policy, and Gestures
 
 **Status:** Gated readiness audit against `Documentation/TDD-Spaces.md`, current pinned `Extern/ladybird`, and app sources.
-**Auditor:** ava-ux (gemini-3.8-flash)
+**Evidence:** Source/probe review; proposed M6 behavior still requires runtime verification.
 **Scope:** Forensic evaluation of M6 prerequisites, separating verified facts from unproven binding hypotheses.
 
 ---
@@ -14,11 +14,12 @@ Milestone 6 encompasses three distinct capabilities:
 3. **Gestures:** 1:1 finger-tracking horizontal trackpad swipe between spaces.
 
 ### Readiness Summary
+
 | Area | Status | Critical Blocker / Reality |
 |---|---|---|
 | **Containers Core** | **BLOCKED** | M5.5 probe only proved low-level SQLite/CookieJar primitives with default+private views; does not test two named container views or process restart. |
 | **Engine Session Binding** | **BLOCKED (HYPOTHESIS REFUTED)** | `PortWebView` cannot simply re-assign `m_session`. `ViewImplementation::initialize_tab` calls `Application::open_page_for_new_tab`, which routes to `m_spare_web_content_process` or `create_web_content_client` hardcoded to the default session's RequestServer. |
-| **Unload Policy** | **READY FOR APP IMPLEMENTATION** | Independent of engine container changes. Can be built entirely in `LadybirdEngine` via existing `app.destroyTab` and `tab.detach()` primitives. |
+| **Unload Policy** | **READY FOR APP IMPLEMENTATION** | This work is independent of engine container changes. Can be built entirely in `LadybirdEngine` via existing `app.destroyTab` and `tab.detach()` primitives. |
 | **1:1 Swipe Gestures** | **NEEDS DESIGN / PROTOTYPE** | Past experiments used threshold-on-ended fling triggers; true 1:1 finger tracking requires interactive presentation and conflict resolution with horizontal page scrolling. |
 | **Profile UI Boundary** | **PROTECTED** | "Set Profile" menu item must remain disabled. Container IDs must not be conflated with full user profile semantics. |
 
@@ -99,7 +100,7 @@ Unlike containers, the **Unload Policy** requires zero engine modifications and 
 ### 4.1 Invariants (TDD-Spaces §1 & §2)
 1. Descriptors remain durable in `WorkspaceManager`; `runtimeTabs` maintains stable observable wrapper identities.
 2. Unloading a tab clears `tab.engineID`, destroys the engine page via `app.destroyTab(engineID)`, and detaches surface bindings.
-3. Unloading an inactive workspace closes all its tab engine pages, immediately reclaiming the corresponding WebContent helper processes (verifiable via `pgrep WebContent`).
+3. Unloading an inactive workspace closes all its tab engine pages, destroying their engine handles. Page-resource and helper reclamation must be measured; do not assume immediate process exit, even for a dedicated helper.
 4. Re-selecting an unloaded tab enters `BrowserModel.select -> rehydrate`, recreating the engine tab on demand.
 
 ### 4.2 App Implementation Surface
@@ -141,10 +142,10 @@ To maintain stability and contract compliance, M6 must be delivered in strictly 
 - **Task 1.1:** Implement `BrowserModel.unloadTab` and `BrowserModel.unloadWorkspace` in `LadybirdEngine`.
 - **Task 1.2:** Add unit and integration tests verifying WebContent handle destruction, descriptor survival, and lazy rehydration.
 - **Task 1.3:** Add "Unload Space Tabs" affordance to inactive space context menus in `LadybirdUI`.
-- **Acceptance:** Verify via `ps` that unloading a 3-tab background space terminates 3 `WebContent` processes while preserving all tabs in `spaces.json`.
+- **Acceptance:** Verify destruction of engine page handles and durable descriptor survival with successful rehydration on selection; verify process reclamation for dedicated Ava-owned WebContent instances while preserving all tabs in `spaces.json`.
 
 ### Phase 2: Upstream-Shaped Container Lifecycle Probe (Fork Verification)
-- **Task 2.1:** Write a dedicated, rigorous native probe in `Extern/ladybird/Tests/LibWebView/TestNativeContainerLifecycle.cpp`.
+- **Task 2.1:** Write a dedicated, rigorous native probe in `Extern/ladybird/Tests/LibWebView/TestNativeContainerLifecycle.cpp` against a separately approved upstream-shaped `Application` container-identifier patch on an isolated fork branch. This prerequisite must land on the probe branch before execution; do not bypass R7 or hide production changes as test support.
 - **Task 2.2:** Probe must:
   - Launch two distinct named container views through `Application`.
   - Verify that `open_page_for_new_tab` connects each view to its specific container `RequestServer`.
