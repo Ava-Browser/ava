@@ -531,6 +531,10 @@ public final class BrowserModel {
 
     // MARK: - Engine events
 
+    /// Keyed by the engine's SHA-256 hash, so two tabs on one site share a single decoded image.
+    ///
+    /// Evicted to the hashes the live tabs still reference after each update: a browser left open for days would
+    /// otherwise retain every icon it ever saw. Cheap because the bound is the tab count, not history length.
     private var faviconCache: [String: NSImage] = [:]
 
     private func handleURLChange(_ engineID: UInt64, _ url: String) {
@@ -585,6 +589,14 @@ public final class BrowserModel {
 
         tab.updateFavicon(image: image, ref: hash)
         workspaceManager.updateTab(id, url: tab.currentURL, title: tab.title, faviconRef: hash)
+        pruneFaviconCache()
+    }
+
+    /// Drops decoded icons no live tab references any more.
+    private func pruneFaviconCache() {
+        let live = Set(runtimeTabs.values.compactMap(\.faviconRef))
+        guard live.count < faviconCache.count else { return }
+        faviconCache = faviconCache.filter { live.contains($0.key) }
     }
 
     private func handlePaint(_ engineID: UInt64) {

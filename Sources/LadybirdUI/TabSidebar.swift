@@ -466,6 +466,7 @@ private struct EssentialTile: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 24, height: 24)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .accessibilityHidden(true)
                 } else {
                     Image(systemName: "globe")
                         .font(.system(size: 20))
@@ -522,6 +523,7 @@ private struct TabRowView: View {
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 16, height: 16)
                             .clipShape(RoundedRectangle(cornerRadius: 3))
+                            .accessibilityHidden(true)
                     } else {
                         Image(systemName: tab.isLoaded ? "globe" : "moon.zzz")
                             .font(.system(size: 13))
