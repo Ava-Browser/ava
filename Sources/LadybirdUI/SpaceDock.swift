@@ -163,6 +163,7 @@ struct SpaceDock: View {
                         }
                     }
                 }
+                .frame(height: 24)
                 .onHover { isGroupHovered = $0 }
 
                 Spacer(minLength: 32)
