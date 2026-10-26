@@ -12,6 +12,7 @@ import SwiftUI
 
 public final class SelectableRenameTextField: NSTextField {
     public var selectAllOnFocus: Bool = false
+    private var pendingInitialFocus = false
 
     // Selecting in viewDidMoveToWindow is too early: the field editor does not exist yet, so currentEditor() is nil and
     // the caret lands at the end of the name. Selecting after becoming first responder is the point where it exists.
@@ -22,6 +23,25 @@ public final class SelectableRenameTextField: NSTextField {
             currentEditor()?.selectAll(nil)
         }
         return accepted
+    }
+
+    // updateNSView can run before the field is attached, where makeFirstResponder silently does nothing. Remember the
+    // request and retry once the window arrives instead of dropping it.
+    public func requestInitialFocus() {
+        selectAllOnFocus = true
+        pendingInitialFocus = !focusNowIfPossible()
+    }
+
+    override public func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil && pendingInitialFocus {
+            pendingInitialFocus = !focusNowIfPossible()
+        }
+    }
+
+    private func focusNowIfPossible() -> Bool {
+        guard let window else { return false }
+        return window.makeFirstResponder(self)
     }
 }
 
@@ -59,8 +79,7 @@ public struct RenameTextField: NSViewRepresentable {
         if !context.coordinator.didFocus {
             // The view is recreated per rename session, so this runs once and lands focus on the new field.
             context.coordinator.didFocus = true
-            nsView.selectAllOnFocus = true
-            nsView.window?.makeFirstResponder(nsView)
+            nsView.requestInitialFocus()
         } else if nsView.stringValue != text {
             nsView.stringValue = text
         }

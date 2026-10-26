@@ -448,6 +448,28 @@ struct SpaceInlineRenameLifecycleTests {
         #expect(model.activeWorkspace?.name == "Design System")
     }
 
+    @Test("Rename request from the dock targets that Space, not the active one")
+    func renameRequestSelectsTargetSpace() {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+
+        let model = BrowserModel(store: store)
+        let first = model.createWorkspace()
+        let second = model.createWorkspace()
+        model.selectWorkspace(first)
+
+        // A rename requested for an inactive Space must switch to it, otherwise the inline field is never shown.
+        let actionState = SpaceActionState()
+        actionState.rename(second)
+        let requestedID = try? #require(actionState.inlineRenameWorkspaceID)
+        #expect(requestedID == second.id)
+
+        if model.activeWorkspace?.id != second.id {
+            model.selectWorkspace(second)
+        }
+        #expect(model.activeWorkspace?.id == second.id)
+    }
+
     @Test("Commit resets state before model mutation")
     func commitResetsStateBeforeModelMutation() {
         let store = temporaryStore()

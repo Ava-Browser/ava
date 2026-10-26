@@ -116,8 +116,13 @@ struct TabSidebar: View {
         .onChange(of: actionState.inlineRenameWorkspaceID) { _, requestedID in
             guard let requestedID,
                   let workspace = model.workspaces.first(where: { $0.id == requestedID }) else { return }
-            renameState.begin(for: workspace)
             actionState.inlineRenameWorkspaceID = nil
+            // The field lives in the active Space's header, so a request from the dock's menu for another Space has to
+            // switch there first; otherwise editing starts with no visible editor.
+            if model.activeWorkspace?.id != workspace.id {
+                model.selectWorkspace(workspace)
+            }
+            renameState.begin(for: workspace)
         }
         .onChange(of: model.activeWorkspace?.id) { _, newID in
             renameState.handleSpaceSwitch(newActiveID: newID)
