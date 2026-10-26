@@ -7,6 +7,9 @@
  */
 
 import Foundation
+import IOSurface
+import LadybirdBridge
+import QuartzCore
 import Testing
 
 @testable import LadybirdEngine
@@ -222,5 +225,41 @@ struct RuntimeTeardownTests {
         #expect(model.selectedTabID == tab.id)
         #expect(model.tabs.map(\.id) == [tab.id])
         #expect(model.tabs.allSatisfy { !$0.isLoaded })
+    }
+}
+
+@Suite("PortWebView presentation geometry")
+@MainActor
+struct PortWebViewPresentationTests {
+    @Test("Presenting padded surface anchors top-left at y=0 in flipped layer")
+    func presentationAnchorsTopLeftInFlippedLayer() throws {
+        let view = PortWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        let layer = try #require(view.layer?.sublayers?.first)
+
+        let surface = try #require(IOSurface(properties: [
+            .width: 800,
+            .height: 856,
+            .bytesPerElement: 4,
+        ]))
+
+        let portSurface = PortSurface(
+            iosurface: Unmanaged.passUnretained(surface).toOpaque(),
+            paintedWidth: 800,
+            paintedHeight: 600,
+            surfaceWidth: 800,
+            surfaceHeight: 856
+        )
+
+        view.present(portSurface)
+
+        #expect(layer.contentsAreFlipped() == true)
+        #expect(layer.contentsGravity == .bottomLeft)
+        #expect(layer.contentsRect.origin.x == 0)
+        #expect(layer.contentsRect.origin.y == 0)
+        #expect(layer.contentsRect.width == 1.0)
+        #expect(abs(layer.contentsRect.height - (600.0 / 856.0)) < 0.0001)
+
+        view.clearSurface()
+        #expect(layer.contents == nil)
     }
 }
