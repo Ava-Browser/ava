@@ -69,7 +69,7 @@ public final class WorkspaceManager {
     }
 
     @discardableResult
-    public func createWorkspace(name: String? = nil, icon: String = "circle.grid.2x2.fill") -> Workspace {
+    public func createWorkspace(name: String? = nil, icon: String = "circle.fill") -> Workspace {
         let number = workspaces.count + 1
         let workspace = Workspace(
             name: name ?? "Space \(number)",

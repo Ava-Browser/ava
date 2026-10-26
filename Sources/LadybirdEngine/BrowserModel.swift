@@ -22,6 +22,7 @@ public final class BrowserModel {
     public private(set) var canGoBack = false
     public private(set) var canGoForward = false
     public var addressText = ""
+    public var focusAddressRequested = false
     public private(set) var failure: String?
 
     @ObservationIgnored private static var processApp: PortApp?
@@ -29,12 +30,17 @@ public final class BrowserModel {
     @ObservationIgnored public let webView: PortWebView
     @ObservationIgnored private var app: PortApp?
     @ObservationIgnored private var terminationObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private let newTabURLProvider: (() -> String)?
 
-    public init(store: GraphStore = .applicationDefault()) {
+    public init(
+        store: GraphStore = .applicationDefault(),
+        newTabURLProvider: (() -> String)? = nil
+    ) {
         let manager = WorkspaceManager(store: store)
         workspaceManager = manager
         runtimeTabs = Dictionary(uniqueKeysWithValues: manager.tabs.map { ($0.id, BrowserTab(descriptor: $0)) })
         webView = PortWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        self.newTabURLProvider = newTabURLProvider
     }
 
     public var workspaces: [Workspace] { workspaceManager.workspaces }
@@ -98,7 +104,7 @@ public final class BrowserModel {
         installWebViewCallbacks()
 
         if workspaceManager.workspaces.isEmpty {
-            _ = workspaceManager.createWorkspace(name: "Personal", icon: "house.fill")
+            _ = workspaceManager.createWorkspace(name: "Personal", icon: "circle.fill")
         }
         if workspaceManager.activeTabID == nil {
             _ = openTab(url: homeURL)
@@ -278,11 +284,24 @@ public final class BrowserModel {
 
     @discardableResult
     public func openTab(url: String? = nil, tier: TabTier = .normal) -> BrowserTab? {
-        let destination = url ?? AppSettings.shared.newTabURL
+        let destination = url ?? (newTabURLProvider?() ?? AppSettings.shared.newTabURL)
+
+        // If opening an unaddressed new tab, reuse an existing blank tab in the active space rather than creating duplicate empty tabs
+        if url == nil, tier == .normal {
+            if let existingBlank = normalTabs.first(where: { $0.currentURL == "about:blank" || $0.currentURL.isEmpty }) {
+                select(existingBlank)
+                focusAddressRequested = true
+                return existingBlank
+            }
+        }
+
         guard app != nil, let descriptor = workspaceManager.createTab(tier: tier, url: destination) else { return nil }
         let tab = BrowserTab(descriptor: descriptor)
         runtimeTabs[tab.id] = tab
         select(tab, force: true)
+        if url == nil {
+            focusAddressRequested = true
+        }
         return tab
     }
 

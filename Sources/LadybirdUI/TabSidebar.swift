@@ -21,6 +21,7 @@ struct TabSidebar: View {
 
     @State private var isEssentialsTargeted: Bool = false
     @State private var isPinnedTargeted: Bool = false
+    @State private var isLineTargeted: Bool = false
     @State private var isNormalTargeted: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -61,14 +62,14 @@ struct TabSidebar: View {
                 if let activeWorkspace = model.activeWorkspace {
                     activeSpaceHeader(activeWorkspace)
                         .padding(.horizontal, 10)
-                        .padding(.bottom, 4)
+                        .padding(.bottom, (!model.pinnedTabs.isEmpty || isPinnedTargeted) ? 4 : 2)
                 }
 
                 // 3. Pinned Tabs (collapsible under the active space row)
-                if isPinnedExpanded {
+                if isPinnedExpanded && (!model.pinnedTabs.isEmpty || isPinnedTargeted) {
                     pinnedSection
                         .padding(.horizontal, 10)
-                        .padding(.bottom, 6)
+                        .padding(.bottom, 4)
                 }
 
                 // 4. Divider with trailing "Clear" button
@@ -86,6 +87,16 @@ struct TabSidebar: View {
                     .padding(.horizontal, 10)
                     .padding(.top, 4)
                     .padding(.bottom, 12)
+
+                // Fill remaining empty space for generous right-click hit target
+                Spacer(minLength: 40)
+            }
+            .frame(maxWidth: .infinity, minHeight: 400, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .contextMenu {
+                if let activeWorkspace = model.activeWorkspace {
+                    SpaceContextMenu(workspace: activeWorkspace, model: model, actionState: actionState)
+                }
             }
         }
         .focusable()
@@ -98,22 +109,6 @@ struct TabSidebar: View {
             return .handled
         }
         .scrollContentBackground(.hidden)
-        .background {
-            if let activeWorkspace = model.activeWorkspace {
-                if reduceTransparency {
-                    Color.clear
-                } else {
-                    LinearGradient(
-                        colors: [
-                            Color(hex: activeWorkspace.theme.startHex).opacity(0.08),
-                            Color(hex: activeWorkspace.theme.endHex).opacity(0.03)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                }
-            }
-        }
     }
 
     // MARK: - Essentials Section
@@ -209,6 +204,11 @@ struct TabSidebar: View {
         .frame(height: 34)
         .contentShape(Rectangle())
         .onHover { isHeaderHovered = $0 }
+        .dropDestination(for: String.self) { ids, _ in
+            retier(ids, to: .pinned)
+        } isTargeted: { targeted in
+            isPinnedTargeted = targeted
+        }
         .contextMenu {
             SpaceContextMenu(workspace: workspace, model: model, actionState: actionState)
         }
@@ -219,8 +219,8 @@ struct TabSidebar: View {
     private var pinnedSection: some View {
         VStack(spacing: 2) {
             if model.pinnedTabs.isEmpty {
-                ZStack {
-                    if isPinnedTargeted {
+                if isPinnedTargeted {
+                    ZStack {
                         RoundedRectangle(cornerRadius: 10)
                             .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4]))
                             .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
@@ -228,13 +228,7 @@ struct TabSidebar: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                }
-                .frame(maxWidth: .infinity, minHeight: 28)
-                .contentShape(Rectangle())
-                .dropDestination(for: String.self) { ids, _ in
-                    retier(ids, to: .pinned)
-                } isTargeted: { targeted in
-                    isPinnedTargeted = targeted
+                    .frame(maxWidth: .infinity, minHeight: 28)
                 }
             } else {
                 ForEach(model.pinnedTabs) { tab in
@@ -257,8 +251,8 @@ struct TabSidebar: View {
     private var dividerWithClear: some View {
         HStack(spacing: 8) {
             Rectangle()
-                .fill(Color.primary.opacity(colorSchemeContrast == .increased ? 0.3 : 0.12))
-                .frame(height: 1)
+                .fill(isLineTargeted || isPinnedTargeted ? Color.accentColor : Color.primary.opacity(colorSchemeContrast == .increased ? 0.3 : 0.12))
+                .frame(height: isLineTargeted || isPinnedTargeted ? 2 : 1)
 
             if !model.normalTabs.isEmpty {
                 Button("Clear") {
@@ -271,7 +265,13 @@ struct TabSidebar: View {
                 .help("Close all normal tabs in this space")
             }
         }
-        .frame(height: 18)
+        .frame(height: 20)
+        .contentShape(Rectangle())
+        .dropDestination(for: String.self) { ids, _ in
+            retier(ids, to: .pinned)
+        } isTargeted: { targeted in
+            isLineTargeted = targeted
+        }
     }
 
     // MARK: - New Tab Row
@@ -439,7 +439,7 @@ private struct TabRowView: View {
                         .font(.system(size: 13, weight: isSelected ? .medium : .regular))
                         .foregroundStyle(isSelected ? Color.primary : Color.primary.opacity(0.85))
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(.tail)
 
                     Spacer(minLength: 0)
                 }

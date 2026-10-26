@@ -14,6 +14,7 @@ public struct BrowserWindow: View {
     @State private var spaceActionState = SpaceActionState()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @FocusState private var addressFocused: Bool
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init() {}
 
@@ -50,8 +51,23 @@ public struct BrowserWindow: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             VStack(spacing: 0) {
                 TabSidebar(model: model, actionState: spaceActionState)
-                Divider()
                 SpaceDock(model: model, actionState: spaceActionState)
+            }
+            .background {
+                if let activeWorkspace = model.activeWorkspace {
+                    if reduceTransparency {
+                        Color.clear
+                    } else {
+                        LinearGradient(
+                            colors: [
+                                Color(hex: activeWorkspace.theme.startHex).opacity(0.08),
+                                Color(hex: activeWorkspace.theme.endHex).opacity(0.03)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                }
             }
             .modifier(SpaceActionModifier(model: model, actionState: spaceActionState))
             .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 320)
@@ -82,6 +98,12 @@ public struct BrowserWindow: View {
                     homeURL: Self.launchURL,
                     overrideRestoredTab: Self.launchURLArgument != nil
                 )
+            }
+            .onChange(of: model.focusAddressRequested) { _, requested in
+                if requested {
+                    addressFocused = true
+                    model.focusAddressRequested = false
+                }
             }
             .toolbar {
                 // Navigation sits at the window's leading edge and the field takes the flexible middle slot, which is

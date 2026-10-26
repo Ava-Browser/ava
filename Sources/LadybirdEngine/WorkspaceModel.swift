@@ -54,7 +54,7 @@ public struct GradientSpec: Codable, Hashable, Sendable {
     public static func normalizedHex(_ hex: String) -> String? {
         let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleaned = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
-        guard isValidHex(cleaned) else { return nil }
+        guard isValidHex(trimmed) else { return nil }
         return "#" + cleaned.uppercased()
     }
 
@@ -109,6 +109,7 @@ public struct Workspace: Codable, Identifiable, Hashable, Sendable {
     }
 
     public static let standardSymbols: [String] = [
+        "circle.fill",
         "circle.grid.2x2.fill",
         "house.fill",
         "briefcase.fill",

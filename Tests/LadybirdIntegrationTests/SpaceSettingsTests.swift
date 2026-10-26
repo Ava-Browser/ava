@@ -468,8 +468,46 @@ struct SpaceSettingsTests {
         #expect(GradientSpec.isValidHex("  #112233  "))
         #expect(GradientSpec.normalizedHex("112233") == "#112233")
         #expect(GradientSpec.normalizedHex("aabbcc") == "#AABBCC")
+        #expect(!GradientSpec.isValidHex("##112233"))
+        #expect(GradientSpec.normalizedHex("##112233") == nil)
         #expect(!GradientSpec.isValidHex("12345"))
         #expect(!GradientSpec.isValidHex("1234567"))
         #expect(!GradientSpec.isValidHex("ZZZZZZ"))
+    }
+
+    @Test("openTab reuses an existing blank tab and requests address focus instead of creating duplicates")
+    func reuseExistingBlankTab() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+
+        // Test with isolated custom destination provider:
+        let customDestination = "https://custom.example"
+        let model = BrowserModel(store: store, newTabURLProvider: { customDestination })
+        let space = model.workspaceManager.createWorkspace(name: "Space")
+        let space2 = model.workspaceManager.createWorkspace(name: "Space 2")
+        model.selectWorkspace(space)
+
+        // A real-page descriptor matching the custom destination must not be treated as empty.
+        _ = try #require(model.workspaceManager.createTab(in: space.id, tier: .normal, url: customDestination))
+        #expect(model.normalTabs.count == 1)
+
+        // Without a running engine, nil proves no existing tab was reused.
+        #expect(model.openTab() == nil)
+
+        // 2. An empty tab in a DIFFERENT space is not reused
+        _ = try #require(model.workspaceManager.createTab(in: space2.id, tier: .normal, url: "about:blank"))
+        #expect(model.openTab() == nil)
+
+        // 3. A genuine empty tab (about:blank) in the active space IS reused
+        let blankTabDesc = try #require(model.workspaceManager.createTab(in: space.id, tier: .normal, url: "about:blank"))
+        let opened = try #require(model.openTab())
+        #expect(opened.id == blankTabDesc.id)
+        #expect(model.focusAddressRequested == true)
+
+        // 4. Calling openTab with an explicit URL never reuses empty tabs
+        #expect(model.openTab(url: "https://explicit.example") == nil)
+        #expect(model.openTab(tier: .pinned) == nil)
+        #expect(model.openTab(tier: .essential) == nil)
+        #expect(model.normalTabs.count == 2)
     }
 }
