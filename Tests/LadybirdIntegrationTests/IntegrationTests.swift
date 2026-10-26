@@ -231,8 +231,8 @@ struct RuntimeTeardownTests {
 @Suite("PortWebView presentation geometry")
 @MainActor
 struct PortWebViewPresentationTests {
-    @Test("Presenting padded surface anchors top-left at y=0 in flipped layer")
-    func presentationAnchorsTopLeftInFlippedLayer() throws {
+    @Test("Presenting padded surface anchors top-left at y=0")
+    func presentationAnchorsTopLeft() throws {
         let view = PortWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         let layer = try #require(view.layer?.sublayers?.first)
 
@@ -252,7 +252,7 @@ struct PortWebViewPresentationTests {
 
         view.present(portSurface)
 
-        #expect(layer.contentsAreFlipped() == true)
+        #expect(view.isFlipped)
         #expect(layer.contentsGravity == .bottomLeft)
         #expect(layer.contentsRect.origin.x == 0)
         #expect(layer.contentsRect.origin.y == 0)

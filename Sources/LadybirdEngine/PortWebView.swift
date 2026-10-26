@@ -246,14 +246,14 @@ public final class PortWebView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         contentLayer.contentsScale = window?.backingScaleFactor ?? 1
-        // Inside a flipped view, the layer's y-axis points down (contentsAreFlipped() == true).
-        // Anchoring the painted part at the visual top-left means y-origin is 0, not (1 - heightRatio).
-        // Vertical gravity also inverts: .bottomLeft visually pins to the top-left (R1).
-        let isFlipped = contentLayer.contentsAreFlipped()
-        contentLayer.contentsGravity = isFlipped ? .bottomLeft : .topLeft
+        // This view is always flipped (see `isFlipped`), so the layer's y-axis points down. Anchoring the painted part
+        // at the visual top-left means y-origin 0, not (1 - heightRatio). Vertical gravity inverts with it: .bottomLeft
+        // pins to the top-left. Reading it back from the layer instead would be inferring our own constant from AppKit
+        // incidental behaviour, and R1 still holds either way: the crop stays a contentsRect, never a bitmap clone.
+        contentLayer.contentsGravity = .bottomLeft
         contentLayer.contentsRect = CGRect(
             x: 0,
-            y: isFlipped ? 0 : 1 - paintedHeight / surfaceHeight,
+            y: 0,
             width: paintedWidth / surfaceWidth,
             height: paintedHeight / surfaceHeight
         )
