@@ -42,7 +42,7 @@ public final class PortWebView: NSView {
         layer?.masksToBounds = true
 
         contentLayer.isOpaque = true
-        contentLayer.contentsGravity = .topLeft
+        contentLayer.contentsGravity = .bottomLeft
         contentLayer.masksToBounds = true
         // Without this every frame cross-fades in and geometry changes slide (TestNativePresentation).
         contentLayer.actions = [
@@ -246,10 +246,14 @@ public final class PortWebView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         contentLayer.contentsScale = window?.backingScaleFactor ?? 1
-        // The layer's unit rectangle has its origin at the bottom-left, so anchor the painted part at the top.
+        // Inside a flipped view, the layer's y-axis points down (contentsAreFlipped() == true).
+        // Anchoring the painted part at the visual top-left means y-origin is 0, not (1 - heightRatio).
+        // Vertical gravity also inverts: .bottomLeft visually pins to the top-left (R1).
+        let isFlipped = contentLayer.contentsAreFlipped()
+        contentLayer.contentsGravity = isFlipped ? .bottomLeft : .topLeft
         contentLayer.contentsRect = CGRect(
             x: 0,
-            y: 1 - paintedHeight / surfaceHeight,
+            y: isFlipped ? 0 : 1 - paintedHeight / surfaceHeight,
             width: paintedWidth / surfaceWidth,
             height: paintedHeight / surfaceHeight
         )
