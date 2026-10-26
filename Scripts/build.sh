@@ -43,6 +43,17 @@ MSG
     fi
 fi
 
+# The shim speaks a C ABI whose struct layouts live in the pinned submodule, so a dylib built from a
+different commit is not a stale build — it is a different ABI. Widening `LbCallbacks` and running the
+host against the older dylib is an immediate startup SIGSEGV, and `swift build` cannot see it: it only
+links a symbol, and the field offsets are baked into the Swift side at compile time.
+#
+# So the dylib records which commit produced it, and a mismatch stops the build rather than shipping
+the crash. The stamp lives beside the dylib because that is what the recorded commit describes.
+PIN_STAMP="${BUILD_DIR}/lib/.libport-pin"
+pin_now="$(git -C "${FORK}" rev-parse HEAD 2>/dev/null || echo unknown)"
+pin_built="$(cat "${PIN_STAMP}" 2>/dev/null || echo none)"
+
 if [[ "${1:-}" != "--swift-only" ]]; then
     if [[ ! -d "${BUILD_DIR}" ]]; then
         echo "error: no build directory at ${BUILD_DIR}" >&2
@@ -50,6 +61,27 @@ if [[ "${1:-}" != "--swift-only" ]]; then
         exit 1
     fi
     cmake --build "${BUILD_DIR}" --target LibPort
+    printf '%s\n' "${pin_now}" > "${PIN_STAMP}"
+    pin_built="${pin_now}"
+fi
+
+if [[ "${pin_built}" != "${pin_now}" ]]; then
+    cat >&2 <<MSG
+error: the LibPort shim does not match the pinned engine commit.
+
+    pinned submodule: ${pin_now}
+    built from:       ${pin_built}
+
+The shim's C structs (LbCallbacks) changed between those commits. The Swift side is compiled against
+the pinned header, so running it against this dylib reads the wrong field offsets and crashes at
+startup. Rebuild the shim:
+
+    ./Scripts/build.sh
+
+If the build tree is a symlink to another checkout, that checkout must also be at ${pin_now} —
+otherwise cmake rebuilds from the other checkout's sources and stamps a commit it did not build.
+MSG
+    exit 1
 fi
 
 # `swift build` cannot warn about this itself: it only links the dylib when a Swift file references a

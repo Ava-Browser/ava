@@ -310,8 +310,13 @@ public final class BrowserTab: Identifiable {
     public private(set) var favicon: NSImage?
     public private(set) var faviconRef: String?
 
+    public var isLoaded: Bool { engineID != nil }
+
+    /// A real `<title>` always wins; an empty one leaves the URL-derived fallback in place.
     func updateTitle(_ newTitle: String) {
-        title = newTitle.isEmpty ? (currentURL.isEmpty ? "New Tab" : currentURL) : newTitle
+        if !newTitle.isEmpty {
+            title = newTitle
+        }
     }
 
     func updateFavicon(_ image: NSImage?, ref: String?) {
@@ -406,6 +411,20 @@ Implementation should proceed in five isolated, reviewable stages across the two
 - **Apple Touch Icons (`apple-touch-icon`):** Deferred. LibWeb does not download or parse touch icons. Any touch icon support requires an upstream LibWeb patch to `HTMLLinkElement.cpp`.
 - **Web App Manifest Icons:** Deferred. No manifest downloader exists in Ladybird.
 - **TLS Certificate Detail Sheet:** Deferred. `LibWebView` exposes no security handshake info. Scheme-based indication (`https://`) remains standard.
+- **Icon persistence to disk:** Deferred. `faviconRef` is stored in the graph, but icon bytes are cached in memory per session, so a cold launch shows the placeholder until the page reloads.
+
+### 8.3 ABI mismatch is a build-time hazard, not a runtime one to document away
+
+Adding fields to `LbCallbacks` changes the struct's field offsets. The Swift side bakes those offsets in at
+compile time, so a host built against the new header and linked against an older `liblagom-port.dylib` reads the
+dialog function pointers at the wrong offsets and crashes on startup.
+
+`Scripts/build.sh` therefore records the submodule commit that produced the dylib in `lib/.libport-pin` and
+refuses to continue when it disagrees with the pinned commit ("built from" vs "pinned submodule"). A fresh clone
+with no stamp fails closed rather than guessing.
+
+This matters most when the build directory is a symlink to another checkout: cmake then rebuilds from that
+checkout's sources while the outer repo pins a different commit, and the run would silently load foreign code.
 
 ---
 
