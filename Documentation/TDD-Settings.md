@@ -1,25 +1,20 @@
 # TDD: Capability-backed Ava Settings
 
-**Status:** Design reviewed and finalized; Phase 0 implementation authorized, engine features
-remain blocked until their probes pass. **Review date:** 2026-10-25.
-**Author:** settings-design worker, Gemini 3.8 Flash/high. **Final reviewer:** coordinator.
+**Status:** Superseded for engine-owned settings on 2026-10-26. Ladybird's working
+`about:settings` page remains the implementation; native Search/DNS integration is cancelled.
+App-owned General/Appearance behavior and the evidence inventory remain applicable.
 **Product contract:** [PRD-Settings.md](PRD-Settings.md).
 Read Architecture → Rules → Traps → PRD-Settings before implementation.
 
 ## 1. Decisions and implementation boundaries
 
-1. Preserve existing app preferences and data paths. Extend the native Settings scene;
-   do not add another engine, web settings page, database, or generic preferences framework.
-2. Separate **desired configuration**, **configuration handed to the engine**, and
-   **observed request behavior**. None implies the others succeeded.
-3. New engine preferences have a small throwing, atomic Codable store. Existing chrome/
-   new-tab keys remain in UserDefaults. Neither engine getters nor UserDefaults.set can
-   acknowledge a durable disk write, so neither is used to claim durable engine saves.
-4. Search ships independently before DNS. First UI slice: built-in provider chooser and
-   explicit search-off, plus existing General/About. Custom editing and remote suggestions
-   are separate slices. Do not display empty Websites/Privacy/Network destinations.
-5. No new engine behavior is declared proven by this document. Source inspection finds
-   candidate paths; native probes must measure those paths before controls ship.
+1. Preserve existing app preferences and data paths. Keep the native Settings scene for
+   app-owned General, Appearance, and About controls only.
+2. Use Ladybird's existing `about:settings` WebUI for engine-owned search, network, website,
+   privacy, and browsing-data settings.
+3. Do not add a duplicate desired-preferences record, C ABI settings mirror, native Search
+   or Network pane, or an Ava policy that overrides the engine's selected behavior.
+4. The detailed engine design below is historical research, not implementation authorization.
 
 Ownership stays UI → `@MainActor LadybirdEngine` → `LadybirdBridge` → C11 LibPort.
 Only Engine may use AppKit/CoreFoundation. UI never imports CLadybirdPort; Bridge never
@@ -286,10 +281,10 @@ relaunch, engine unavailable, active-page/tab/space preservation, and no effect 
 Visual evidence is separate from compilation. No second engine for multiwindow testing;
 record any existing multiwindow prerequisite rather than claiming unsupported coverage.
 
-## 9. Native probes, sequencing, and rollback
+## 9. Historical native-probe plan — cancelled
 
-**All probes below are proposed/unrun.** Phase 0a search/migration can pass and unblock
-Phase 1 independently; DNS failure must not block the safe search slice.
+The following plan is retained to explain the evidence bar considered before the product
+chose `about:settings`. It must not be implemented or used to advance the engine submodule.
 
 - `TestNativeSettingsSearch*`: isolated config; built-in catalog and configured/off/fallback
   route assertions; query encoding; invalid IDs; raw URL/host:port; typed migration snapshot
@@ -317,15 +312,8 @@ and execute that produced target with bounded timeout. Record source SHA, CMake 
 actual command/result, fixture setup, and untested cases. Run Swift tests and Bash4+ layer
 check. An app compile or setting/getter round-trip is not resolver/persistence proof.
 
-Commit order: permitted fork adaptation + probes first; deliberate remote pin advance;
-Bridge/Engine facade + tests; native populated pane; follow-up capabilities independently.
-No app/fork changes in one feature commit. API descriptions above are proposed contracts,
-not permission to change upstream-shaped code without review.
-
-Rollback preserves original desired record and privacy choices. Feature UI may be hidden
-while a regression is fixed, but disabled/unavailable search may NEVER silently become Bing.
-Do not downgrade desired strict TLS, erase profile data, or reset unrelated settings to
-restore a green build. Report blocked runtime gates instead of weakening tests.
+No fork adaptation, submodule advance, Bridge facade, or native populated pane is planned.
+The closed Phase 0a branch must not be revived without a new product decision.
 
 ## 10. Review record and current release gate
 
@@ -334,8 +322,6 @@ Swift examples, migration ambiguity, incomplete inventory, and unsafe fallback/p
 claims. Revised by the worker; finalized by coordinator with lifecycle/import/protocol
 clarifications and separately executable phase gates.
 
-**Approved now:** Phase 0 search/migration implementation and evidence collection; separate
-DNS probe planning. **Not claimed complete:** any new settings runtime support, DNS security
-behavior, engine preference migration, multiwindow lifecycle, or a shipped Settings pane.
-Phase 1 authoring begins only after its native evidence is reviewed and the exact implemented
-ABI is recorded alongside this design. Phase 3 requires focused capability-specific designs.
+**Current decision:** Engine-owned settings stay in `about:settings`. The search ABI/probe PR
+was closed without merging, the app pin was never advanced, and native Search/DNS authoring
+must not continue under this TDD.
