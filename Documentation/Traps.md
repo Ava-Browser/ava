@@ -51,8 +51,8 @@ callbacks genuinely block the page (`Page::did_request_alert` spins the dialog l
 different outcome); `on_request_before_unload` → invoke the given `Function<void(bool)>`
 **with true meaning ALLOW navigation, not block**. Also `on_request_external_url_confirmation`'s
 bool means "open it?", not "rejected?". Everything else is a notification or a leaked request,
-not a deadlock. (Audit: `~/Documents/browsers/callback-audit.md`; all four blocking rows are
-run-verified by the page-self-reporting fixture.)
+not a deadlock. All four blocking rows were run-verified by the page-self-reporting fixture;
+the private callback-audit scratch document is not a reproducible public artifact.
 
 ## Tooling
 
