@@ -117,7 +117,7 @@ struct SidebarSwipeClassifier: Sendable {
             return .consume
         }
 
-        return absY > absX ? .passThrough : .consume
+        return .passThrough
     }
 }
 

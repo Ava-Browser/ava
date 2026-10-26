@@ -124,6 +124,29 @@ struct SidebarSwipeClassifierTests {
         #expect(classifier.state == .idle)
     }
 
+    @Test("Undecided gestures pass through until the horizontal axis locks")
+    func undecidedGesturePassesThrough() {
+        var classifier = SidebarSwipeClassifier()
+
+        let began = classifier.process(
+            isPrecise: true, phase: .began, momentumPhase: [], deltaX: 4.0, deltaY: 4.0
+        )
+        #expect(began == .passThrough)
+        #expect(classifier.state == .tracking(deltaX: 4.0, deltaY: 4.0))
+
+        let undecided = classifier.process(
+            isPrecise: true, phase: .changed, momentumPhase: [], deltaX: 2.0, deltaY: 2.0
+        )
+        #expect(undecided == .passThrough)
+        #expect(classifier.state == .tracking(deltaX: 6.0, deltaY: 6.0))
+
+        let locked = classifier.process(
+            isPrecise: true, phase: .changed, momentumPhase: [], deltaX: 4.0, deltaY: 0.0
+        )
+        #expect(locked == .consume)
+        #expect(classifier.state == .horizontalLocked(deltaX: 10.0))
+    }
+
     @Test("Small gestures below threshold do not switch spaces")
     func smallGestureDoesNotSwitch() {
         var classifier = SidebarSwipeClassifier()
