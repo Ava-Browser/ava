@@ -206,12 +206,16 @@ struct TabSidebar: View {
             .help(isPinnedExpanded ? "Collapse Pinned Tabs" : "Expand Pinned Tabs")
 
             if renameState.editingWorkspaceID == workspace.id {
+                // Same visual language as the address field: a capsule with the accent ring while editing.
                 RenameTextField(
                     text: $renameState.draft,
                     onSubmit: { renameState.commit(model: model) },
                     onCancel: { renameState.cancel() }
                 )
-                .frame(height: 20)
+                .padding(.horizontal, 8)
+                .frame(height: 22)
+                .background(Capsule().fill(Color.secondary.opacity(0.1)))
+                .overlay(Capsule().strokeBorder(Color.accentColor, lineWidth: 2))
             } else {
                 // Arc parity: the title is a label, not an edit affordance. Renaming starts from Rename Space….
                 Text(workspace.name)

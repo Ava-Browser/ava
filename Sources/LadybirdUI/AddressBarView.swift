@@ -20,14 +20,15 @@ public struct AddressBarView: View {
 
     public var body: some View {
         ZStack {
-            // Quiet capsule background surface with explicit semantic focus ring during editing.
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            // Safari's field is a capsule in both states: the radius is half the height, and only the ring changes.
+            // Editing swaps the hairline for a 2 pt accent ring instead of resizing or re-rounding the shape.
+            Capsule()
                 .fill(Color.secondary.opacity(0.1))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    Capsule()
                         .strokeBorder(
-                            state.isEditing ? Color.accentColor : Color.secondary.opacity(0.2),
-                            lineWidth: state.isEditing ? 1.5 : 0.5
+                            state.isEditing ? Color.accentColor : Color.secondary.opacity(0.25),
+                            lineWidth: state.isEditing ? 2 : 0.75
                         )
                 )
 
