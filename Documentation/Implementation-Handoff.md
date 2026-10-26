@@ -3,7 +3,7 @@
 ## Reviewed baseline and current scope
 
 - `TDD-SpaceSettings.md`: functional sidebar/settings slice committed as `6155b4e`.
-  Coordinator independently verified **35 tests in 7 suites**, layer guard, and exact
+  Coordinator independently verified **36 tests in 7 suites**, layer guard, and exact
   toolbar source identity. See `Reports/SpaceSettings-FirstPass.md` for remaining visual
   and runtime gaps. This is NOT a claim of exact Arc pixel parity.
 - `PRD-Settings.md` + `TDD-Settings.md`: inventory/design finalized in `8758a9d`, with
@@ -11,20 +11,21 @@
   NOT shipped merely because the designs are approved.
 - `TDD-SafariHeader.md`: first real-control pass revised after native focus/blur review.
   Worker reported Accessibility selection/blur evidence; coordinator independently ran
-  the STACKED sidebar + header app: **57 tests in 10 suites passed**, layer guard passed.
+  the STACKED sidebar + header app: **58 tests in 10 suites passed**, layer guard passed.
   Final native/UI/measurement review remains a draft-PR gate.
 - Engine baseline: `66616b4deeb42fbc7ce722075f22b1b1e5f5891a`, default branch `ava-port`.
-  Search-settings draft is fork commit `0e037e448d`. Worker reports a passing isolated
-  native run with new-shim provenance; coordinator has NOT independently audited/rerun
-  the C++/ABI probe. Do not advance the app pin yet.
+  Search-settings PR head is `0edb975aca`. Independent audit found and corrected real-schema,
+  custom-catalog, fallback-reset, status, and unbounded-wait defects. Coordinator reran the
+  corrected isolated native probe with new-shim provenance. The app pin remains unchanged;
+  advance it only in a deliberate post-review integration change.
 
 ## Pull requests and preserved evidence
 
 - [Ava #2 — sidebar/settings foundation](https://github.com/Ava-Browser/ava/pull/2)
 - [Ava #3 — Safari header draft](https://github.com/Ava-Browser/ava/pull/3), stacked on #2
-- [ava-engine #1 — search settings/probe draft](https://github.com/Ava-Browser/ava-engine/pull/1)
+- [ava-engine #1 — search settings/probe](https://github.com/Ava-Browser/ava-engine/pull/1)
 
-The engine PR preserves exact isolated build commands/results in
+The engine PR preserves portable isolated-build guidance and results in
 `Tests/LibWebView/TestNativeSettingsSearch.md`. Header screenshots and its revised report
 are in #3. See [M6 readiness](Reports/M6-Readiness.md) and
 [manual-unload readiness](Reports/ManualUnload-Readiness.md). Manual unload stopped at

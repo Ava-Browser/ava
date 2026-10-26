@@ -18,7 +18,7 @@ DYLD_LIBRARY_PATH="$(cd Extern/ladybird/Build/release/lib && pwd -P)" \
 git diff --check
 ```
 
-Result: **35 tests in 7 suites passed**, layer guard passed, no whitespace errors. The guard
+Result: **36 tests in 7 suites passed**, layer guard passed, no whitespace errors. The guard
 warned that the engine build belongs to a separate checkout; the compared sources agree,
 but this does not certify a fresh engine build. The Swift build used a scratch directory
 because the original build cache referenced the checkout's old path.
