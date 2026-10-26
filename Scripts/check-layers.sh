@@ -107,8 +107,8 @@ else
         case "${file}" in
             Libraries/LibWebView/BrowsingSession.h) expected_hash="05b73d401b6474697cdf8f48f40fb418434a66dd3c42a7dfc22ea623a85f571f" ;;
             Libraries/LibWebView/BrowsingSession.cpp) expected_hash="6f6a4adb5c5d442ac27f5452ef0fd69e7b149506ea019cc789d7c7c242192219" ;;
-            Libraries/LibWebView/Application.h) expected_hash="5ceaf1373f66ed80db66941659c881a47c2750497600bb4295ca672689711caf" ;;
-            Libraries/LibWebView/Application.cpp) expected_hash="048d04bf7bc280fd59a2752d16666223972fce6f54ce7961017d717813ca6cd9" ;;
+            Libraries/LibWebView/Application.h) expected_hash="8e9ab17fffb6e4eff5783fe19e3e52566e21be53832850ccb7bbb5a0fa3ef503" ;;
+            Libraries/LibWebView/Application.cpp) expected_hash="57b640bcd9991e9180b9c5f5b16858f979d0b6975df3f2615fdc7ddab74d5129" ;;
             *) expected_hash="" ;;
         esac
         if [[ -n "${expected_hash}" ]]; then
