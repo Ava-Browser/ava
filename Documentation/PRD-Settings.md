@@ -1,19 +1,19 @@
 # PRD: Ava Settings — simple controls, real capabilities
 
-**Status:** Product requirements reviewed; [TDD-Settings.md](TDD-Settings.md) finalized.
-Implementation remains capability-gated; Phase 0 search/migration evidence work is authorized.
-**Updated:** 2026-10-25. Supersedes the original small General/Appearance/About brief.
+**Status:** Revised product scope. Ava-native settings remain limited to app-owned controls;
+Ladybird's working `about:settings` page is the source of truth for engine-owned settings.
+The former native Search/Network plan is cancelled and retained below only as research evidence.
+**Updated:** 2026-10-26.
 **Product owner/final reviewer:** coordinator. TDD author: supervised settings-design worker
 (Gemini 3.8 Flash/high), revised after review; coordinator finalized the design.
 **Platforms:** macOS 14.4+, including unsigned development builds.
 
 ## 1. Outcome
 
-Let people choose how Ava opens pages, searches, resolves website addresses, displays
-content, and handles privacy without learning Ladybird's internal configuration model.
-Every visible preference must change the behavior its label describes, survive the
-promised lifecycle, and report errors honestly. Simplify Ladybird's surface, not its
-security semantics. Do not build a settings catalog full of inert switches.
+Keep Ava's native Settings focused on app-owned controls such as new-tab behavior and chrome
+appearance. Engine-owned search, network, website, privacy, and browsing-data controls stay
+in Ladybird's `about:settings` page. Ava must not duplicate those values, add a parallel
+persistence model, or interpose a policy that blocks working engine features.
 
 This document inventories the **checked-in engine**, commit
 `66616b4deeb42fbc7ce722075f22b1b1e5f5891a`, not an assertion about every future upstream
@@ -233,33 +233,18 @@ successful. No session reset or unsaved Settings draft loss merely by opening a 
 
 ## 7. Delivery plan and exit criteria
 
-### Phase 0 — TDD and capability probes (mandatory gate)
+### Native app settings
 
-Produce a reviewed TDD with per-setting owner/default/validation/storage/apply timing,
-concrete API changes, error/lifetime/thread contracts, migration, tests, and rollback.
-Separate fork and app commits. Probes are written/run in the permitted `TestNative*` seam
-before an engine behavior is accepted. No app feature implementation is authorized just
-because this PRD exists. Document blocked capabilities instead of relaxing security rules.
+Preserve the existing General, Appearance, and About panes. Add only controls whose state and
+behavior are owned by Ava. Cmd-comma continues to open this small native window.
 
-### Phase 1 — Native simplification + real search choice
+### Engine settings
 
-General/Search populated; current appearance/new-tab settings preserved; native window
-reuse and error handling. Search catalog/current selection/setting round-trip through
-native host, URL-vs-query correctness, and initialized/uninitialized fallback tests pass.
-Explicit disabled search only ships with its semantics fixed/proved. Suggestions/custom
-editors can follow separately rather than delaying the core provider chooser.
-
-### Phase 2 — Real Network/DNS
-
-System/custom transport/address/port/DNSSEC, validation and override/proxy disclosure.
-Deterministic probe verifies actual resolver use, running/new helper application,
-TLS failure/non-downgrade, and restart/cache semantics. No pane ships with unproved controls.
-
-### Phase 3 — Websites and privacy (independent proof gates)
-
-Languages/zoom first; autoplay, geolocation, GPC, blocking, background services, and data
-clearing land in focused slices with capability-specific tests. Broad inventory is not
-permission to combine unrelated security features into one enormous implementation PR.
+Search providers, suggestions, DNS/network configuration, website permissions, privacy,
+and browsing-data controls remain owned by Ladybird and are configured through
+`about:settings`. Do not add C ABI mirrors or Swift persistence for these controls. If a
+future native integration is reconsidered, it requires a new product decision based on a
+missing user capability—not visual consistency alone.
 
 ### Acceptance across phases
 
@@ -269,11 +254,9 @@ permission to combine unrelated security features into one enormous implementati
 - No second engine, lost tabs, reset active Space, header/sidebar redesign, new data path,
   silently changed search default, or destroyed browsing data as a settings side effect.
 - Cmd-comma focuses one native Settings window; close/reopen/resize, light/dark, VoiceOver,
-  keyboard, contrast/transparency/motion settings work. Provider/DNS details fit without
-  clipped labels or inaccessible Save/Cancel/error messages.
-- Unit tests cover defaults, unknown/corrupt stored values, migration, URL/template/DNS
-  validation, cancelled drafts, and behavior routing. Native probes cover effects beyond
-  pure storage. Multiwindow updates and absent engine behavior are explicit.
+  keyboard, contrast/transparency/motion settings work.
+- Unit tests cover app-owned defaults, unknown/corrupt stored values, cancelled drafts, and
+  behavior routing. Engine settings remain covered by Ladybird's own tests and WebUI.
 - CI scope remains honest: compile checks are not runtime proof. Report actual commands,
   engine revision/build provenance, screenshot evidence, and untested/blocked items.
 
