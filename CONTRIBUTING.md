@@ -26,8 +26,7 @@ After building the real engine:
 ```bash
 swift build
 swift test
-# Requires Bash 4+; use /opt/homebrew/bin/bash on Apple Silicon.
-bash ./Scripts/check-layers.sh
+/bin/bash ./Scripts/check-layers.sh
 ```
 
 CI compiles the Swift application and test targets and checks boundaries. It does not

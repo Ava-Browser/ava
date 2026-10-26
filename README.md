@@ -29,7 +29,6 @@ The app and engine live in separate repositories, with the engine fork pinned un
 
 - macOS 14.4 or later
 - Xcode command-line tools with Swift 6 or later
-- Bash 4 or later for the layer guard (`brew install bash`); macOS's bundled Bash is too old
 - The dependencies required by Ladybird's [build instructions](https://github.com/LadybirdBrowser/ladybird/blob/master/Documentation/BuildInstructionsLadybird.md)
 
 The engine's first build can take several hours and requires substantial disk space.
@@ -57,7 +56,7 @@ swift test
 bash ./Scripts/check-layers.sh
 ```
 
-Use the Homebrew-installed Bash for the layer check (on Apple Silicon, `/opt/homebrew/bin/bash`). GitHub Actions compiles the application and test targets and checks layer boundaries; it does not link the engine or execute tests.
+The layer guard works with macOS's bundled Bash. GitHub Actions compiles the application and test targets and checks layer boundaries; it does not link the engine or execute tests.
 
 The layer check validates architectural boundaries and the allowed changes to the engine fork. Native engine probes live under `Extern/ladybird/Tests/LibWebView/TestNative*`; some open windows and require an interactive desktop session.
 
