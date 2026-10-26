@@ -19,6 +19,9 @@ struct TabSidebar: View {
     @State private var isEllipsisHovered: Bool = false
     @FocusState private var isEllipsisFocused: Bool
 
+    @State private var renameState = SpaceRenameState()
+    @FocusState private var isRenameFocused: Bool
+
     @State private var isEssentialsTargeted: Bool = false
     @State private var isPinnedTargeted: Bool = false
     @State private var isLineTargeted: Bool = false
@@ -100,13 +103,27 @@ struct TabSidebar: View {
             }
         }
         .focusable()
+        .focusEffectDisabled()
         .onKeyPress(.downArrow) {
+            guard !renameState.isEditing else { return .ignored }
             model.selectNextTab(includePinned: isPinnedExpanded)
             return .handled
         }
         .onKeyPress(.upArrow) {
+            guard !renameState.isEditing else { return .ignored }
             model.selectPreviousTab(includePinned: isPinnedExpanded)
             return .handled
+        }
+        .onChange(of: model.activeWorkspace?.id) { _, newID in
+            renameState.handleSpaceSwitch(newActiveID: newID)
+        }
+        .onChange(of: model.selectedTabID) { _, _ in
+            if renameState.isEditing {
+                renameState.commit(model: model)
+            }
+        }
+        .onDisappear {
+            renameState.cancel()
         }
         .scrollContentBackground(.hidden)
     }
@@ -163,24 +180,56 @@ struct TabSidebar: View {
                     }
                 }
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: isPinnedExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16, height: 16)
-                        .accessibilityHidden(true)
+                Image(systemName: isPinnedExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isPinnedExpanded ? "Collapse Pinned Tabs" : "Expand Pinned Tabs")
+            .help(isPinnedExpanded ? "Collapse Pinned Tabs" : "Expand Pinned Tabs")
 
+            if renameState.editingWorkspaceID == workspace.id {
+                TextField("Space Name", text: $renameState.draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13, weight: .regular))
+                    .focused($isRenameFocused)
+                    .onAppear {
+                        isRenameFocused = true
+                    }
+                    .onSubmit {
+                        renameState.commit(model: model)
+                        isRenameFocused = false
+                    }
+                    .onExitCommand {
+                        renameState.cancel()
+                        isRenameFocused = false
+                    }
+                    .onChange(of: isRenameFocused) { _, focused in
+                        if !focused && renameState.isEditing {
+                            renameState.commit(model: model)
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
+            } else {
+                Button {
+                    renameState.begin(for: workspace)
+                    isRenameFocused = true
+                } label: {
                     Text(workspace.name)
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                        .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityLabel("Space name \(workspace.name). Click to rename.")
+                .help("Click to rename space")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isPinnedExpanded ? "Collapse Pinned Tabs in \(workspace.name)" : "Expand Pinned Tabs in \(workspace.name)")
-            .help(isPinnedExpanded ? "Collapse Pinned Tabs" : "Expand Pinned Tabs")
 
             Spacer(minLength: 0)
 

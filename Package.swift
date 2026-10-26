@@ -59,6 +59,6 @@ let package = Package(
         ),
 
         .testTarget(name: "LadybirdBridgeTests", dependencies: ["LadybirdBridge"]),
-        .testTarget(name: "LadybirdIntegrationTests", dependencies: ["LadybirdEngine"]),
+        .testTarget(name: "LadybirdIntegrationTests", dependencies: ["LadybirdEngine", "LadybirdUI"]),
     ]
 )
