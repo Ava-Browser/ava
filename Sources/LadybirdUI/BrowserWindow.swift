@@ -53,6 +53,12 @@ public struct BrowserWindow: View {
                 TabSidebar(model: model, actionState: spaceActionState)
                 SpaceDock(model: model, actionState: spaceActionState)
             }
+            .background(
+                SidebarSwipeRepresentable(
+                    onSwipeLeft: { model.selectNextWorkspace() },
+                    onSwipeRight: { model.selectPreviousWorkspace() }
+                )
+            )
             .background {
                 if let activeWorkspace = model.activeWorkspace {
                     if reduceTransparency {

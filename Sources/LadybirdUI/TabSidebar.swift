@@ -19,6 +19,8 @@ struct TabSidebar: View {
     @State private var isEllipsisHovered: Bool = false
     @FocusState private var isEllipsisFocused: Bool
 
+    @State private var renameState = SpaceRenameState()
+
     @State private var isEssentialsTargeted: Bool = false
     @State private var isPinnedTargeted: Bool = false
     @State private var isLineTargeted: Bool = false
@@ -100,13 +102,38 @@ struct TabSidebar: View {
             }
         }
         .focusable()
+        .focusEffectDisabled()
         .onKeyPress(.downArrow) {
+            guard !renameState.isEditing else { return .ignored }
             model.selectNextTab(includePinned: isPinnedExpanded)
             return .handled
         }
         .onKeyPress(.upArrow) {
+            guard !renameState.isEditing else { return .ignored }
             model.selectPreviousTab(includePinned: isPinnedExpanded)
             return .handled
+        }
+        .onChange(of: actionState.inlineRenameWorkspaceID) { _, requestedID in
+            guard let requestedID,
+                  let workspace = model.workspaces.first(where: { $0.id == requestedID }) else { return }
+            actionState.inlineRenameWorkspaceID = nil
+            // The field lives in the active Space's header, so a request from the dock's menu for another Space has to
+            // switch there first; otherwise editing starts with no visible editor.
+            if model.activeWorkspace?.id != workspace.id {
+                model.selectWorkspace(workspace)
+            }
+            renameState.begin(for: workspace)
+        }
+        .onChange(of: model.activeWorkspace?.id) { _, newID in
+            renameState.handleSpaceSwitch(newActiveID: newID)
+        }
+        .onChange(of: model.selectedTabID) { _, _ in
+            if renameState.isEditing {
+                renameState.commit(model: model)
+            }
+        }
+        .onDisappear {
+            renameState.cancel()
         }
         .scrollContentBackground(.hidden)
     }
@@ -135,7 +162,7 @@ struct TabSidebar: View {
                     isEssentialsTargeted = targeted
                 }
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48, maximum: 48), spacing: 8)], spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48, maximum: 48), spacing: 8)], alignment: .leading, spacing: 8) {
                     ForEach(model.essentialTabs) { tab in
                         EssentialTile(tab: tab, model: model)
                             .draggable(tab.id.raw.uuidString)
@@ -153,7 +180,9 @@ struct TabSidebar: View {
     // MARK: - Active Space Header
 
     private func activeSpaceHeader(_ workspace: Workspace) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
+            // Arc parity: the resting slot shows the space icon; hover reveals the disclosure chevron in the same
+            // 12 pt slot, so nothing shifts between states.
             Button {
                 if reduceMotion {
                     isPinnedExpanded.toggle()
@@ -163,46 +192,85 @@ struct TabSidebar: View {
                     }
                 }
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: isPinnedExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16, height: 16)
-                        .accessibilityHidden(true)
-
-                    Text(workspace.name)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                Group {
+                    if isHeaderHovered {
+                        Image(systemName: isPinnedExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        WorkspaceIconView(icon: workspace.icon)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .frame(width: 16, height: 16)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isPinnedExpanded ? "Collapse Pinned Tabs in \(workspace.name)" : "Expand Pinned Tabs in \(workspace.name)")
+            .accessibilityLabel(isPinnedExpanded ? "Collapse Pinned Tabs" : "Expand Pinned Tabs")
             .help(isPinnedExpanded ? "Collapse Pinned Tabs" : "Expand Pinned Tabs")
+
+            if renameState.editingWorkspaceID == workspace.id {
+                // Same visual language as the address field: a capsule with the accent ring while editing.
+                RenameTextField(
+                    text: $renameState.draft,
+                    onSubmit: { renameState.commit(model: model) },
+                    onCancel: { renameState.cancel() }
+                )
+                .padding(.horizontal, 8)
+                .frame(height: 22)
+                .background(Capsule().fill(Color.secondary.opacity(0.1)))
+                .overlay(Capsule().strokeBorder(Color.accentColor, lineWidth: 2))
+            } else {
+                // Arc parity: the title is a label, not an edit affordance. Renaming starts from Rename Space….
+                Text(workspace.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .accessibilityAddTraits(.isHeader)
+            }
 
             Spacer(minLength: 0)
 
-            Menu {
-                SpaceContextMenu(workspace: workspace, model: model, actionState: actionState)
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-                    .background(isEllipsisHovered || isEllipsisFocused ? Color.primary.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            if renameState.editingWorkspaceID == workspace.id {
+                Button("Done") { renameState.commit(model: model) }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .keyboardShortcut(.defaultAction)
+                .accessibilityLabel("Save space name")
+                .help("Save space name")
+            } else {
+                Menu {
+                    SpaceContextMenu(workspace: workspace, model: model, actionState: actionState)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(isEllipsisHovered || isEllipsisFocused ? Color.primary.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .focused($isEllipsisFocused)
+                .opacity(isHeaderHovered || isEllipsisHovered || isEllipsisFocused ? 1.0 : 0.0)
+                .onHover { isEllipsisHovered = $0 }
+                .accessibilityLabel("Space options for \(workspace.name)")
+                .help("Space Options")
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .focused($isEllipsisFocused)
-            .opacity(isHeaderHovered || isEllipsisHovered || isEllipsisFocused ? 1.0 : 0.0)
-            .onHover { isEllipsisHovered = $0 }
-            .accessibilityLabel("Space options for \(workspace.name)")
-            .help("Space Options")
         }
-        .frame(height: 34)
-        .contentShape(Rectangle())
+        .padding(.horizontal, 8)
+        .frame(height: 36)
+        .background {
+            // The pill marks the active row, so it stays while renaming rather than vanishing with the pointer.
+            if isHeaderHovered || renameState.isEditing {
+                let activeColor = controlActiveState == .inactive ? Color.primary.opacity(0.04) : (reduceTransparency ? Color.primary.opacity(0.12) : Color.primary.opacity(0.07))
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(activeColor)
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 12))
         .onHover { isHeaderHovered = $0 }
         .dropDestination(for: String.self) { ids, _ in
             retier(ids, to: .pinned)

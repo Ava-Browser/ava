@@ -178,6 +178,20 @@ public final class BrowserModel {
         }
     }
 
+    public func selectNextWorkspace() {
+        guard let active = activeWorkspace,
+              let index = workspaces.firstIndex(where: { $0.id == active.id }),
+              index + 1 < workspaces.count else { return }
+        selectWorkspace(workspaces[index + 1])
+    }
+
+    public func selectPreviousWorkspace() {
+        guard let active = activeWorkspace,
+              let index = workspaces.firstIndex(where: { $0.id == active.id }),
+              index > 0 else { return }
+        selectWorkspace(workspaces[index - 1])
+    }
+
     public func deleteWorkspace(_ workspace: Workspace) {
         guard workspaces.count > 1 else { return }
         let targetID = workspace.id

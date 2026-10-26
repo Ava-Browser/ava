@@ -13,14 +13,12 @@ import SwiftUI
 @Observable
 final class SpaceActionState {
     enum Sheet: Identifiable {
-        case rename(UUID)
         case icon(UUID)
         case theme(UUID)
         case manage
 
         var id: String {
             switch self {
-            case let .rename(id): return "rename-\(id)"
             case let .icon(id): return "icon-\(id)"
             case let .theme(id): return "theme-\(id)"
             case .manage: return "manage"
@@ -31,8 +29,11 @@ final class SpaceActionState {
     var activeSheet: Sheet?
     var pendingDeleteWorkspace: Workspace?
 
+    // Renaming happens inline in the sidebar header, like Arc: the menu asks, the title becomes a field.
+    var inlineRenameWorkspaceID: UUID?
+
     func rename(_ workspace: Workspace) {
-        activeSheet = .rename(workspace.id)
+        inlineRenameWorkspaceID = workspace.id
     }
 
     func changeIcon(_ workspace: Workspace) {
@@ -576,10 +577,6 @@ struct SpaceActionModifier: ViewModifier {
         content
             .sheet(item: $actionState.activeSheet) { sheet in
                 switch sheet {
-                case let .rename(id):
-                    if let workspace = model.workspaceManager.workspaces.first(where: { $0.id == id }) {
-                        RenameSpaceSheet(workspace: workspace, model: model)
-                    }
                 case let .icon(id):
                     if let workspace = model.workspaceManager.workspaces.first(where: { $0.id == id }) {
                         ChangeSpaceIconSheet(workspace: workspace, model: model)
