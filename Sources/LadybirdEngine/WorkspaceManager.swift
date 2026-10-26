@@ -210,10 +210,15 @@ public final class WorkspaceManager {
         persist()
     }
 
-    public func updateTab(_ id: TabID, url: String, title: String? = nil) {
+    public func updateTab(_ id: TabID, url: String, title: String? = nil, faviconRef: String? = nil, clearFaviconRef: Bool = false) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         tabs[index].url = url
         if let title { tabs[index].title = title }
+        if clearFaviconRef {
+            tabs[index].faviconRef = nil
+        } else if let faviconRef {
+            tabs[index].faviconRef = faviconRef
+        }
         persist()
     }
 

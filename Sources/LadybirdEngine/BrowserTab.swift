@@ -6,6 +6,7 @@
  * One tab's runtime state. Its durable identity and metadata live in TabDescriptor; its engine handle is disposable.
  */
 
+import AppKit
 import Foundation
 import Observation
 
@@ -44,12 +45,16 @@ public final class BrowserTab: Identifiable {
     public private(set) var title: String
     public private(set) var isLoading: Bool = false
     public private(set) var dialog: TabDialog?
+    public private(set) var favicon: NSImage?
+    public private(set) var faviconRef: String?
 
-    init(descriptor: TabDescriptor, engineID: UInt64? = nil) {
+    init(descriptor: TabDescriptor, engineID: UInt64? = nil, favicon: NSImage? = nil) {
         id = descriptor.id
         self.engineID = engineID
         currentURL = descriptor.url
         title = descriptor.title
+        self.favicon = favicon
+        faviconRef = descriptor.faviconRef
     }
 
     public var isLoaded: Bool { engineID != nil }
@@ -66,13 +71,31 @@ public final class BrowserTab: Identifiable {
 
     func update(url: String) {
         currentURL = url
-        if let host = URL(string: url)?.host(), !host.isEmpty {
-            title = host
-        } else if url.isEmpty || url == "about:blank" {
+        if url.isEmpty || url == "about:blank" {
             title = "New Tab"
-        } else {
-            title = url
+        } else if title.isEmpty || title == "New Tab" {
+            if let host = URL(string: url)?.host(), !host.isEmpty {
+                title = host
+            } else {
+                title = url
+            }
         }
+    }
+
+    func updateTitle(_ newTitle: String) {
+        if !newTitle.isEmpty {
+            title = newTitle
+        }
+    }
+
+    func updateFavicon(image: NSImage?, ref: String?) {
+        favicon = image
+        faviconRef = ref
+    }
+
+    func clearFavicon() {
+        favicon = nil
+        faviconRef = nil
     }
 
     func setLoading(_ loading: Bool) { isLoading = loading }

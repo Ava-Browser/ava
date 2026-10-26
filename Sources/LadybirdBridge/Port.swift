@@ -45,6 +45,9 @@ public struct PortCallbacks {
     public var onReadyToPaint: (UInt64) -> Void
     public var onURLChange: (UInt64, String) -> Void
     public var onLoadFinish: (UInt64, String) -> Void
+    public var onTitleChange: ((UInt64, String) -> Void)?
+    public var onLoadingStateChange: ((UInt64, Bool) -> Void)?
+    public var onFaviconChange: ((UInt64, Data?, String?) -> Void)?
 
     // The four blocking dialogs. Every one MUST be answered through `PortApp`'s matching `answer*` call: the page's
     // script is stopped until it is, and the stall is inside WebContent, so a host that ignores one looks healthy while
@@ -61,6 +64,9 @@ public struct PortCallbacks {
         onReadyToPaint: @escaping (UInt64) -> Void = { _ in },
         onURLChange: @escaping (UInt64, String) -> Void = { _, _ in },
         onLoadFinish: @escaping (UInt64, String) -> Void = { _, _ in },
+        onTitleChange: ((UInt64, String) -> Void)? = nil,
+        onLoadingStateChange: ((UInt64, Bool) -> Void)? = nil,
+        onFaviconChange: ((UInt64, Data?, String?) -> Void)? = nil,
         onRequestAlert: ((UInt64, String) -> Void)? = nil,
         onRequestConfirm: ((UInt64, String) -> Void)? = nil,
         onRequestPrompt: ((UInt64, String, String) -> Void)? = nil,
@@ -69,6 +75,9 @@ public struct PortCallbacks {
         self.onReadyToPaint = onReadyToPaint
         self.onURLChange = onURLChange
         self.onLoadFinish = onLoadFinish
+        self.onTitleChange = onTitleChange
+        self.onLoadingStateChange = onLoadingStateChange
+        self.onFaviconChange = onFaviconChange
         self.onRequestAlert = onRequestAlert
         self.onRequestConfirm = onRequestConfirm
         self.onRequestPrompt = onRequestPrompt
@@ -132,6 +141,22 @@ public final class PortApp {
             guard let context = CallbackContext.resolve(raw) else { return }
             let string = decode(url, len)
             MainActor.assumeIsolated { context.callbacks.onLoadFinish(tab, string) }
+        }
+        c.on_title_change = { raw, tab, title, len in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let string = decode(title, len)
+            MainActor.assumeIsolated { context.callbacks.onTitleChange?(tab, string) }
+        }
+        c.on_loading_state_change = { raw, tab, isLoading in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let loading = isLoading != 0
+            MainActor.assumeIsolated { context.callbacks.onLoadingStateChange?(tab, loading) }
+        }
+        c.on_favicon_change = { raw, tab, data, len, hash, hashLen in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let iconData: Data? = (data != nil && len > 0) ? Data(bytes: data!, count: len) : nil
+            let hashString: String? = (hash != nil && hashLen > 0) ? decode(hash, hashLen) : nil
+            MainActor.assumeIsolated { context.callbacks.onFaviconChange?(tab, iconData, hashString) }
         }
 
         // Dialogs. Installed only when the host supplied all four — a partial set would let the engine auto-answer some
