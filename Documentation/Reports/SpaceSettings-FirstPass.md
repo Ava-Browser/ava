@@ -9,12 +9,12 @@ sidebar hierarchy, adaptive Essentials tiles, collapsible pinned region, normal-
 keyboard adjacency, and horizontally scrollable space dock. Unsupported Arc profile/folder/
 sharing/export commands remain visibly disabled; this is not a container-support release.
 
-Coordinator independently ran:
+Initial independent verification used a temporary scratch directory. Reproduction commands:
 
 ```sh
 DYLD_LIBRARY_PATH="$(cd Extern/ladybird/Build/release/lib && pwd -P)" \
-  swift test --scratch-path /tmp/ava-public-check.lODYrf
-/opt/homebrew/bin/bash Scripts/check-layers.sh
+  swift test --scratch-path .build/verification
+/bin/bash Scripts/check-layers.sh
 git diff --check
 ```
 
@@ -31,11 +31,9 @@ cleanup before handle destruction, real container-field preservation tests, narr
 overflow, sibling tab-close actions, empty-tier drag targets, keyboard/focus/accessibility,
 safe manager-sheet routes, and one tested keyboard-order implementation.
 
-Worker captures are local review artifacts under `/tmp/ava-*.png`, including
-`ava-v3-resting.png`, `ava-row-menu-only.png`, `ava-dock-menu.png`,
-`ava-manage-spaces.png`, and `ava-delete-confirm.png`. Some predate final small review fixes.
-Coordinator viewed resting/menu captures; these are not comprehensive verification of every
-final UI state or a normalized pixel comparison. Site icons currently use real fallbacks,
+Resting and menu captures were inspected privately; they are not published review assets
+and some predate final small fixes. They do not comprehensively verify every final UI state
+or provide a normalized pixel comparison. Site icons currently use real fallbacks,
 not the reference's site-specific favicons. Native menu/material differences remain.
 
 **Still unverified:** final matched-fixture measurements against both Arc references,

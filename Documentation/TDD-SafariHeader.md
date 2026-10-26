@@ -22,12 +22,14 @@ Read `Architecture.md`, `Rules.md`, and `Traps.md` before implementation.
 
 ## 2. Reference and scale
 
-Local input (2198 × 238 pixels):
-`/var/folders/02/l1xpyx6x5b9g5zq8y9l9n27m0000gn/T/orca-paste-1792930943599-06a19ab4-a8d7-4d24-8145-20e3e56bbae5.png`
+Reference input (2198 × 238 pixels):
+[Sanitized Safari header reference](Screenshots/safari-header-reference-sanitized.png).
+The domain was replaced with `example.com`; extension icons were removed. Do not use
+those redacted regions for pixel comparisons. This is a reference, not an Ava runtime capture.
 
 The image includes wallpaper around the window; compare the window chrome, not the
-entire image bounds. Do not commit this raw capture as a public asset without sanitizing
-its browsing information. If it becomes unavailable, request it again.
+entire image bounds. Do not commit raw captures as public assets without sanitizing
+any browsing information. If unavailable in CI/review, request sanitized capture.
 
 The capture appears consistent with a 2× display, but scale/OS version are unconfirmed.
 Approximate original-image measurements and conditional point equivalents:

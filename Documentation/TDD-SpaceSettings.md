@@ -19,17 +19,14 @@ the header or web content. No engine-fork, bridge, event-loop, or container-sess
 
 ## 2. Reference captures and measurement limits
 
-User-provided local inputs:
+Privately supplied inputs, not published as review assets:
 
 - A (999 × 674): active-space row context menu.
-  `/var/folders/02/l1xpyx6x5b9g5zq8y9l9n27m0000gn/T/orca-paste-1792930194834-e901c873-fe48-4a53-a6f7-b5556c80b186.png`
-- B (1011 × 1322): menu opened from bottom space dock.
-  `/var/folders/02/l1xpyx6x5b9g5zq8y9l9n27m0000gn/T/orca-paste-1792930213789-b666d56f-5709-4e52-b932-1367be95220a.png`
-  Arc ends around y=1080; the Orca window below it is NOT a design reference.
+- B (1011 × 1322): menu opened from bottom space dock; reference window ends around y=1080.
 
-These paths are local implementation inputs, not public assets. Do not commit the raw
-captures: they contain unrelated browsing/application information. If they disappear,
-request them again rather than reconstructing Arc from memory.
+Raw captures contain unrelated browsing/application information and must not be published.
+Request sanitized references before final pixel acceptance rather than reconstructing Arc
+from memory. The estimates below are provisional, not independently reproducible evidence.
 
 Estimates in screenshot pixels, provisionally treated as 1 pixel per layout point:
 
@@ -206,7 +203,7 @@ a separate rollback/store layer. No unrequested migration or new persisted setti
    Essentials and unrelated loaded pages survive.
 4. Check light/dark, narrow/wide sidebar, long names, empty tiers, many spaces, keyboard,
    VoiceOver labels, Escape/Cancel, reduced transparency, and increased contrast.
-5. Run `swift build`, `swift test`, and Bash 4+ `Scripts/check-layers.sh`. If moving the
+5. Run `swift build`, `swift test`, and `/bin/bash Scripts/check-layers.sh`. If moving the
    checkout caused stale module-cache paths, use a fresh `--scratch-path` instead of
    deleting developer state. Report shared-engine-build provenance warnings honestly.
 

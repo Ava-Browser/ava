@@ -1,7 +1,6 @@
 # Manual Inactive Workspace Unload — Readiness and Handoff Report
 
-**Status:** Handoff checkpoint reached prior to implementation by coordinator directive (budget cap); worktree is clean of source modifications.
-**Task:** `task_50f0a3eead6e` (Dispatch `ctx_cbd12551e788`)
+**Status:** Investigation only; no implementation or runtime verification is claimed.
 **Reference:** [TDD-Spaces.md](../TDD-Spaces.md) (Milestone 6: Manual Inactive Workspace Unload slice)
 
 ---
@@ -28,15 +27,15 @@ Investigation completed into the runtime tab lifecycle, durable graph storage, a
      - Call `tab.detach()`.
      - Retain `runtimeTabs[tab.id]` and do not modify the `workspaceManager` descriptor (URL, title, tier, and order survive untouched).
    - `unloadWorkspace(_ workspace: Workspace) -> Bool`:
-     - Reject if `workspace.id == selectedWorkspaceID` (active workspace cannot be unloaded).
-     - Query workspace tabs via `workspaceManager.tabs(in: workspace.id)`.
+     - Reject if `workspace.id == workspaceManager.activeSpaceID` (active workspace cannot be unloaded).
+     - Filter the `workspaceManager.tabs` descriptors by `workspaceID`.
      - Filter strictly to tabs belonging to this space (`descriptor.workspaceID == workspace.id`); never touch global Essentials (`workspaceID == nil`) or other spaces.
      - Invoke `unloadTab` on each loaded tab in the space.
 
 3. **UI & Confirmation (`Sources/LadybirdUI/SpaceSettingsViews.swift`):**
-   - Extend `SpaceContextMenu` (shared by `TabSidebar` header and `SpaceDock` capsule):
+   - Extend `SpaceContextMenu` (shared by `TabSidebar` header and `SpaceDock`):
      - Add an "Unload Inactive Tabs" action.
-     - Disable when `workspace.id == model.selectedWorkspaceID` or when the workspace has no currently loaded tabs.
+     - Disable when `workspace.id == model.workspaceManager.activeSpaceID` or when the workspace has no currently loaded tabs.
      - Wire an explicit confirmation alert warning that unloading discards live page/form state while preserving tab links.
      - Dismissing / Canceling the alert performs a no-op.
 

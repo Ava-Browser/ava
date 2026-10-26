@@ -9,6 +9,50 @@
 The probes in `Extern/ladybird/Tests/LibWebView/TestNative*` are the executable spec for engine
 behaviour. Read them before asserting anything about the engine.
 
+## Public-repository safety
+
+**Treat every commit, branch, draft PR, comment, attachment, release, CI log and artifact as
+public and permanent.** These rules also apply to the engine fork and delegated workers.
+A request to publish work is not permission to publish private inputs or local session state.
+
+- Never commit or upload credentials: API/OAuth tokens, passwords, private/signing keys,
+  certificates with private keys, cookies, authorization headers, `.env` contents or credential
+  stores. Use secret references and clearly fake fixtures, never real values—even in tests.
+- Never publish browser profiles/databases, browsing history, private URLs or query strings,
+  user documents, clipboard contents, crash dumps, or raw request/response captures.
+  Do not dump the environment or authenticated tool output into reports or public logs.
+- Keep local agent conversations, prompts, memory, terminal transcripts, session/dispatch IDs,
+  machine inventories and worktree metadata out of public deliverables. Summarize the technical
+  decision instead. Use repository-relative paths or placeholders such as `<repo>` and `<build>`;
+  remove personal home paths, usernames, private hosts/IPs and local temporary capture paths.
+  Legitimate public attribution, license notices and public project URLs must be preserved.
+- Documentation and build reports must be useful to other contributors, not copies of a local
+  agent session. Publish minimal sanitized commands/results and reproducible synthetic fixtures.
+  Use `example.com`, loopback or reserved test addresses rather than real private infrastructure.
+- Screenshots/videos require visual review of the ENTIRE capture, including tabs, address bars,
+  other windows, notifications and metadata. Prefer clean synthetic browsing state. Crop/redact
+  private content irreversibly and inspect the exported result; do not publish raw pasted images
+  or rely on reversible overlays. Review archives and binary attachments too.
+
+### Before committing or publishing
+
+1. Stage explicit paths; do not use blanket `git add .` / `git add -A` in a working checkout.
+2. Inspect `git diff --cached --stat` AND the complete `git diff --cached`. Open staged images
+   and review non-text files separately. Check new/untracked files deliberately. `.gitignore`
+   is not a security control and does not protect already tracked files.
+3. Run an available secret scanner against the staged/outgoing content. If unavailable, report
+   that limitation and perform manual review; never claim a scan ran or the repo is secret-free.
+4. Before pushing, review ALL outgoing commits and the full PR diff against its intended base,
+   not only the latest file contents. Sanitize PR bodies/comments, logs and attachments too.
+   Deleting sensitive text in a later commit does not remove it from earlier commits.
+5. If any content is questionable, leave it unstaged/unpublished and ask the maintainer privately.
+   Do not paste the suspected sensitive value into a public issue, PR or tool transcript.
+
+If exposure is discovered, stop further publication and notify the maintainer privately without
+repeating the secret. Exposed credentials must be revoked/rotated; deleting a file is insufficient.
+Coordinate history/artifact cleanup with the maintainer—never force-push, rewrite shared history,
+or delete public evidence unilaterally. Follow `SECURITY.md` for private vulnerability reporting.
+
 ## Layers
 
 - `Sources/CLadybirdPort` — the C ABI. Nothing else.

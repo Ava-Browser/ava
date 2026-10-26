@@ -74,24 +74,17 @@ implementation PR for that checkpoint.
     focus. Current fallbacks are not Arc site favicons. Missing Safari Share/overview/
     downloads/bookmarks controls remain omitted until they have real implementations.
 
-## Work preservation and coordination
+## Verification and work preservation
 
-Orca run: `run_1ed04ef8fbaf`. Independent worktrees live under
-`~/orca/workspaces/ava/`: `safari-header`, `settings-tdd`, `manual-unload`.
-Use the Orca task/dispatch records and each PR's checkpoint report for exact source/test
-state. Draft PRs preserve incomplete work; they are not merge approval.
+Use the PR branches and their technical reports for source/test state. Draft PRs preserve
+incomplete work; they are not merge approval. Keep local agent/task/terminal metadata out
+of public documentation. Use isolated worktrees with one writer each.
 
-All new workers use **antigravity/gemini-3.8-flash, high thinking**. One writer per
-worktree. Workers were instructed to checkpoint/stop; expected active tasks have reported
-completion or explicit not-implemented outcomes and were released from their dispatches.
-Externally created Pi terminals remain idle, not continuing source work. Reassign through
-new tasks before resuming; do not leave agents modifying code after PR snapshots are taken.
-
-Build guard requires Bash 4+ (Homebrew Bash on Mac), not `/bin/bash` 3.2. Existing engine
-build is in a separate checkout: compare source bytes and report provenance warnings.
+The build guard supports macOS `/bin/bash` 3.2. When reusing an engine build from another
+checkout, compare source bytes and report provenance warnings.
 Never repoint copied submodule `.git` metadata. Do not write shared CMake/generated/lib
-outputs from a different worktree. Disk space was approximately 11 GiB at checkpoint;
-avoid cold multi-hour builds/dependency downloads. Isolated temporary shim/probe output
+outputs from a different worktree. Check available disk space before cold engine builds.
+Isolated temporary shim/probe output
 may reuse audited cached dependencies read-only, but record exact commands and prove the
 new shim is the one loaded. Never claim a dry-run built/tested the code.
 
@@ -100,6 +93,9 @@ Ava launches because default app/profile paths are shared; record/close only you
 PID. No broad pkill. Local `/tmp` captures/reports are not durable CI artifacts: preserve
 sanitized evidence needed for review in the PR or repository, and label missing evidence.
 
-Full-history secret scanning, signed/self-contained packaging, and universal runtime/
-visual verification are still outstanding; public visibility is not a release-readiness
-certificate.
+Gitleaks 8.30.1 found no detections across all local app Git refs or the outgoing engine
+search changes during review. This is not a full upstream-engine history scan, an image/PII
+audit, or proof that no secret exists. Local paths and coordination identifiers were removed
+from current app documentation; prior published commits are unchanged. Signed/self-contained
+packaging and universal runtime/visual verification remain outstanding. Public visibility is
+not a release-readiness certificate.
