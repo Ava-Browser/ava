@@ -44,6 +44,20 @@ public struct GradientSpec: Codable, Hashable, Sendable {
         self.endHex = endHex
     }
 
+    public static func isValidHex(_ hex: String) -> Bool {
+        let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+        guard cleaned.count == 6 else { return false }
+        return cleaned.range(of: #"^[0-9a-fA-F]{6}$"#, options: .regularExpression) != nil
+    }
+
+    public static func normalizedHex(_ hex: String) -> String? {
+        let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+        guard isValidHex(trimmed) else { return nil }
+        return "#" + cleaned.uppercased()
+    }
+
     /// Cycles through a fixed palette so a new space is visibly not like its neighbours without asking the user.
     public static let palette: [GradientSpec] = [
         .init(startHex: "#5B8DEF", endHex: "#9B6BFF"),
@@ -66,6 +80,66 @@ public struct Workspace: Codable, Identifiable, Hashable, Sendable {
     public var activeTabID: TabID?
     /// Order of this space's tabs. Essentials are ordered globally, not here.
     public var tabOrder: [TabID]
+
+    public var isSymbol: Bool {
+        Self.isSymbolIcon(icon)
+    }
+
+    public static func isSymbolIcon(_ icon: String) -> Bool {
+        let trimmed = icon.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+        if isValidEmoji(trimmed) { return false }
+        return standardSymbols.contains(trimmed) || trimmed.range(of: #"^[a-zA-Z0-9.-]+$"#, options: .regularExpression) != nil
+    }
+
+    public static func isValidIcon(_ icon: String) -> Bool {
+        let trimmed = icon.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if standardSymbols.contains(trimmed) { return true }
+        return isValidEmoji(trimmed)
+    }
+
+    public static func isValidEmoji(_ string: String) -> Bool {
+        guard string.count == 1 else { return false }
+        // Reject ASCII characters, numbers, and symbols like #, *, 0-9 which Unicode flags as emoji
+        guard !string.allSatisfy(\.isASCII) else { return false }
+        return string.unicodeScalars.contains { scalar in
+            scalar.properties.isEmojiPresentation || (scalar.properties.isEmoji && !scalar.isASCII)
+        }
+    }
+
+    public static let standardSymbols: [String] = [
+        "circle.fill",
+        "circle.grid.2x2.fill",
+        "house.fill",
+        "briefcase.fill",
+        "book.fill",
+        "heart.fill",
+        "star.fill",
+        "globe",
+        "sparkles",
+        "folder.fill",
+        "bookmark.fill",
+        "gearshape.fill",
+        "person.fill",
+        "terminal.fill",
+        "tray.fill",
+        "wrench.and.screwdriver.fill",
+        "graduationcap.fill",
+        "cart.fill",
+        "gamecontroller.fill",
+        "tv.fill",
+        "music.note",
+        "camera.fill",
+        "doc.text.fill",
+        "tag.fill",
+        "list.bullet"
+    ]
+
+    public static let standardEmojis: [String] = [
+        "🚀", "💼", "📚", "🎨", "🔬", "🎮",
+        "☕️", "✨", "🛠️", "💡", "🎯", "🏠"
+    ]
 
     public init(
         id: UUID = UUID(),

@@ -1,7 +1,9 @@
 # Technical Design Document: Spaces (Workspaces)
 
-**Status:** Proposed · **Owns:** PRD-Spatial-Browser-Ladybird.md, Features 1 & 2 and the
-groundwork for 3–5 · **Board review:** 2026-10-24 (advisor session)
+**Status:** M5 implemented; M5.5 probe recorded. Current sidebar/space-settings work:
+[TDD-SpaceSettings.md](TDD-SpaceSettings.md).
+Original scope: spatial-browser Features 1 & 2 and groundwork for 3–5.
+**Board review:** 2026-10-24 (advisor session).
 
 Related reading order: `Documentation/Architecture.md` → `Rules.md` → `Traps.md` → this file.
 The probes in `Extern/ladybird/Tests/LibWebView/TestNative*` remain the executable spec for
@@ -132,8 +134,9 @@ process/crash isolation and Chromium-style deep separation.
 
 ## 4. Persistence design
 
-Store: SwiftData or SQLite (decision left to implementer; the schema below is the contract,
-not the library). One write per mutation; app termination needs no flush.
+Implemented store: `GraphStore`, an atomically replaced Codable JSON graph (see §8).
+The original SwiftData/SQLite proposal was not adopted. Reuse the existing store; do not
+introduce a second persistence system. One write per mutation; app termination needs no flush.
 
 Minimum tables: `Workspace`, `TabDescriptor`, plus `ProfileMeta(schemaVersion, activeSpaceID,
 lastOpenTabPerSpace)`.
@@ -233,3 +236,17 @@ phases; none implied by this TDD.
   only branch on `IsPrivate::No` (default session) vs `IsPrivate::Yes` (in-memory transient stores). To ship per-space
   containers in M6, an upstream-shaped patch extending `Application` and `ViewImplementation` to accept a named session identifier
   (or persistent `BrowsingSession`) will be required.
+- 2026-10-25 — Readiness audit correction: the historical M5.5 green above is narrower than
+  the stated M6 acceptance. At the current pin, `TestNativeContainers` creates default/private
+  views, manipulates CookieJars directly, and reopens a named database in the SAME process.
+  It does not attach two real named-container pages or execute quit/relaunch. The cookie/
+  persistence checks print PASS/FAIL without failing the process, and the paint/load wait
+  is unbounded. Preserve that result as feasibility evidence only. Named-session support
+  now exists in `Application::get_or_create_container_session` / `session_for_new_view`,
+  but native-port binding and M6 isolation remain UNVERIFIED. Before container UI, add
+  bounded, fail-closed native probes for two real named-container page sessions, actual
+  request/page cookie and storage isolation, helper binding, and a separate-process restart.
+  A protected `ViewImplementation::m_session` field alone does not prove post-construction
+  reassignment is safe; probe construction/client/session-store ordering first. Do not
+  enable Set Profile for a named-container-only implementation. Threshold-only end-of-swipe
+  switching also does not satisfy M6's 1:1 gesture requirement or page-scroll arbitration.

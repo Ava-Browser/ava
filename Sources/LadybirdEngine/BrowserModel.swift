@@ -22,6 +22,7 @@ public final class BrowserModel {
     public private(set) var canGoBack = false
     public private(set) var canGoForward = false
     public var addressText = ""
+    public var focusAddressRequested = false
     public private(set) var failure: String?
 
     @ObservationIgnored private static var processApp: PortApp?
@@ -29,12 +30,17 @@ public final class BrowserModel {
     @ObservationIgnored public let webView: PortWebView
     @ObservationIgnored private var app: PortApp?
     @ObservationIgnored private var terminationObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private let newTabURLProvider: (() -> String)?
 
-    public init(store: GraphStore = .applicationDefault()) {
+    public init(
+        store: GraphStore = .applicationDefault(),
+        newTabURLProvider: (() -> String)? = nil
+    ) {
         let manager = WorkspaceManager(store: store)
         workspaceManager = manager
         runtimeTabs = Dictionary(uniqueKeysWithValues: manager.tabs.map { ($0.id, BrowserTab(descriptor: $0)) })
         webView = PortWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        self.newTabURLProvider = newTabURLProvider
     }
 
     public var workspaces: [Workspace] { workspaceManager.workspaces }
@@ -98,7 +104,7 @@ public final class BrowserModel {
         installWebViewCallbacks()
 
         if workspaceManager.workspaces.isEmpty {
-            _ = workspaceManager.createWorkspace(name: "Personal", icon: "house.fill")
+            _ = workspaceManager.createWorkspace(name: "Personal", icon: "circle.fill")
         }
         if workspaceManager.activeTabID == nil {
             _ = openTab(url: homeURL)
@@ -172,15 +178,130 @@ public final class BrowserModel {
         }
     }
 
+    public func deleteWorkspace(_ workspace: Workspace) {
+        guard workspaces.count > 1 else { return }
+        let targetID = workspace.id
+        guard workspaces.contains(where: { $0.id == targetID }) else { return }
+        let isDeletingActive = workspaceManager.activeSpaceID == targetID
+
+        // Collect all tabs belonging to this space
+        let spaceDescriptors = workspaceManager.tabs.filter { $0.workspaceID == targetID }
+        let spaceTabs = spaceDescriptors.compactMap { runtimeTabs[$0.id] }
+
+        // 1. Resolve pending dialogs on tabs in the space to be deleted
+        for tab in spaceTabs {
+            answerPendingDialog(on: tab)
+        }
+
+        // 2. If deleting the active space, detach and clear the presented tab before destroying old handles
+        if isDeletingActive {
+            if let leaving = selectedTab {
+                answerPendingDialog(on: leaving)
+            }
+            // Explicitly clear old presentation before attempting survivor selection, so that
+            // any rehydration failure leaves the view safely cleared rather than bound to a destroyed handle.
+            webView.currentTabID = 0
+            webView.clearSurface()
+            addressText = ""
+
+            _ = workspaceManager.deleteWorkspace(targetID)
+
+            if let survivor = selectedTab {
+                select(survivor, force: true)
+            } else if let first = (essentialTabs + pinnedTabs + normalTabs).first {
+                select(first, force: true)
+            }
+        } else {
+            // Inactive space deletion: active space and current page remain untouched
+            _ = workspaceManager.deleteWorkspace(targetID)
+        }
+
+        // 3. Destroy handles and remove runtime tabs for the deleted space
+        for tab in spaceTabs {
+            if let engineID = tab.engineID {
+                engineToTab.removeValue(forKey: engineID)
+                app?.destroyTab(engineID)
+            }
+            runtimeTabs.removeValue(forKey: tab.id)
+        }
+    }
+
+    @discardableResult
+    public func renameWorkspace(_ workspace: Workspace, name: String) -> Bool {
+        workspaceManager.renameWorkspace(workspace.id, name: name)
+    }
+
+    @discardableResult
+    public func updateWorkspaceIcon(_ workspace: Workspace, icon: String) -> Bool {
+        workspaceManager.updateWorkspaceIcon(workspace.id, icon: icon)
+    }
+
+    @discardableResult
+    public func updateWorkspaceTheme(_ workspace: Workspace, theme: GradientSpec) -> Bool {
+        workspaceManager.updateWorkspaceTheme(workspace.id, theme: theme)
+    }
+
+    @discardableResult
+    public func reorderWorkspaces(_ newOrder: [UUID]) -> Bool {
+        workspaceManager.reorderWorkspaces(newOrder)
+    }
+
+    public func moveWorkspace(fromOffsets: IndexSet, toOffset: Int) {
+        workspaceManager.moveWorkspace(fromOffsets: fromOffsets, toOffset: toOffset)
+    }
+
+    public func visibleTabs(includePinned: Bool = true) -> [BrowserTab] {
+        if includePinned {
+            return essentialTabs + pinnedTabs + normalTabs
+        } else {
+            return essentialTabs + normalTabs
+        }
+    }
+
+    public func selectNextTab(includePinned: Bool = true) {
+        let visible = visibleTabs(includePinned: includePinned)
+        guard !visible.isEmpty else { return }
+        guard let current = selectedTabID, let idx = visible.firstIndex(where: { $0.id == current }) else {
+            if let first = visible.first { select(first) }
+            return
+        }
+        let nextIdx = min(idx + 1, visible.count - 1)
+        select(visible[nextIdx])
+    }
+
+    public func selectPreviousTab(includePinned: Bool = true) {
+        let visible = visibleTabs(includePinned: includePinned)
+        guard !visible.isEmpty else { return }
+        guard let current = selectedTabID, let idx = visible.firstIndex(where: { $0.id == current }) else {
+            if let last = visible.last { select(last) }
+            return
+        }
+        let prevIdx = max(idx - 1, 0)
+        select(visible[prevIdx])
+    }
+
     // MARK: - Tabs
 
     @discardableResult
     public func openTab(url: String? = nil, tier: TabTier = .normal) -> BrowserTab? {
-        let destination = url ?? AppSettings.shared.newTabURL
+        let destination = url ?? (newTabURLProvider?() ?? AppSettings.shared.newTabURL)
+
+        // If opening an unaddressed new tab, reuse an existing blank tab in the active space rather than creating duplicate empty tabs
+        if url == nil, tier == .normal {
+            if let existingBlank = normalTabs.first(where: { $0.currentURL == "about:blank" || $0.currentURL.isEmpty }) {
+                select(existingBlank)
+                focusAddressRequested = true
+                return existingBlank
+            }
+        }
+
         guard app != nil, let descriptor = workspaceManager.createTab(tier: tier, url: destination) else { return nil }
         let tab = BrowserTab(descriptor: descriptor)
         runtimeTabs[tab.id] = tab
         select(tab, force: true)
+        if url == nil {
+            focusAddressRequested = true
+        }
         return tab
     }
 
@@ -429,6 +550,13 @@ public final class BrowserModel {
     }
 
     private func runtime(for descriptors: [TabDescriptor]) -> [BrowserTab] {
-        descriptors.compactMap { runtimeTabs[$0.id] }
+        descriptors.map { descriptor in
+            if let existing = runtimeTabs[descriptor.id] {
+                return existing
+            }
+            let newTab = BrowserTab(descriptor: descriptor)
+            runtimeTabs[descriptor.id] = newTab
+            return newTab
+        }
     }
 }

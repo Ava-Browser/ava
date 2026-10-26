@@ -31,8 +31,7 @@ jobs:
         run: swift --version
 
       - name: Contract rules and layer boundaries
-        # The guard uses associative arrays; macOS /bin/bash is version 3.2.
-        run: /opt/homebrew/bin/bash ./Scripts/check-layers.sh
+        run: /bin/bash ./Scripts/check-layers.sh
 
       # Compile targets without linking: linking and running tests require the real engine.
       # An empty dylib cannot satisfy the C symbols now used by LadybirdBridge.
