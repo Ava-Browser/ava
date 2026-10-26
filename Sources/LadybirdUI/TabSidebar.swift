@@ -455,10 +455,24 @@ private struct EssentialTile: View {
                         .strokeBorder(isSelected ? Color.primary.opacity(0.3) : Color.primary.opacity(0.15), lineWidth: 1)
                 }
 
-                Image(systemName: tab.isLoading ? "circle.dotted" : "globe")
-                    .font(.system(size: 20))
-                    .foregroundStyle(isSelected ? .primary : .secondary)
-                    .accessibilityHidden(true)
+                if tab.isLoading {
+                    Image(systemName: "circle.dotted")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                        .accessibilityHidden(true)
+                } else if let favicon = tab.favicon {
+                    Image(nsImage: favicon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 24, height: 24)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: "globe")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                        .accessibilityHidden(true)
+                }
             }
             .frame(width: 48, height: 48)
         }
@@ -497,11 +511,26 @@ private struct TabRowView: View {
                 model.select(tab)
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: tab.isLoading ? "circle.dotted" : (tab.isLoaded ? "globe" : "moon.zzz"))
-                        .font(.system(size: 13))
-                        .foregroundStyle(isSelected ? .primary : .secondary)
-                        .frame(width: 16)
-                        .accessibilityHidden(true)
+                    if tab.isLoading {
+                        Image(systemName: "circle.dotted")
+                            .font(.system(size: 13))
+                            .foregroundStyle(isSelected ? .primary : .secondary)
+                            .frame(width: 16)
+                            .accessibilityHidden(true)
+                    } else if let favicon = tab.favicon {
+                        Image(nsImage: favicon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 16, height: 16)
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                            .accessibilityHidden(true)
+                    } else {
+                        Image(systemName: tab.isLoaded ? "globe" : "moon.zzz")
+                            .font(.system(size: 13))
+                            .foregroundStyle(isSelected ? .primary : .secondary)
+                            .frame(width: 16)
+                            .accessibilityHidden(true)
+                    }
 
                     Text(tab.title.isEmpty ? (tab.currentURL.isEmpty ? "New Tab" : tab.currentURL) : tab.title)
                         .font(.system(size: 13, weight: isSelected ? .medium : .regular))
