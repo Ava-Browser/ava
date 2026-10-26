@@ -152,7 +152,7 @@ struct TabSidebar: View {
                     isEssentialsTargeted = targeted
                 }
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48, maximum: 48), spacing: 8)], spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48, maximum: 48), spacing: 8)], alignment: .leading, spacing: 8) {
                     ForEach(model.essentialTabs) { tab in
                         EssentialTile(tab: tab, model: model)
                             .draggable(tab.id.raw.uuidString)
