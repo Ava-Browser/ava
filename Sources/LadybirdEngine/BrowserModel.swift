@@ -461,6 +461,12 @@ public final class BrowserModel {
 
     public func submitAddress() { load(addressText) }
 
+    public func copyCurrentURL(to pasteboard: NSPasteboard = .general) {
+        guard !currentURL.isEmpty else { return }
+        pasteboard.clearContents()
+        pasteboard.setString(currentURL, forType: .string)
+    }
+
     public func reload() {
         guard let selectedTab, !selectedTab.currentURL.isEmpty else { return }
         load(selectedTab.currentURL, in: selectedTab)
