@@ -14,7 +14,7 @@
   the STACKED sidebar + header app: **58 tests in 10 suites passed**, layer guard passed.
   Final native/UI/measurement review remains a draft-PR gate.
 - Engine baseline: `66616b4deeb42fbc7ce722075f22b1b1e5f5891a`, default branch `ava-port`.
-  Search-settings PR head is `0edb975aca`. Independent audit found and corrected real-schema,
+  Search-settings PR head is `389091524c`. Independent audit found and corrected real-schema,
   custom-catalog, fallback-reset, status, and unbounded-wait defects. Coordinator reran the
   corrected isolated native probe with new-shim provenance. The app pin remains unchanged;
   advance it only in a deliberate post-review integration change.
