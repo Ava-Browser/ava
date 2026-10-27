@@ -17,9 +17,16 @@ command -v create-dmg >/dev/null || { echo "error: create-dmg is required" >&2; 
 [[ -f "${BACKGROUND}" ]] || { echo "error: background not found: ${BACKGROUND}" >&2; exit 1; }
 codesign --verify --deep --strict "${APP}"
 
+out_dir="$(dirname "${OUTPUT}")"
+mkdir -p "${out_dir}"
+# create-dmg deletes an existing output before building; stage inside a unique sibling directory on the same filesystem
+# so a failed or concurrent run leaves previous/other disk images intact and atomically renames on completion.
+staged_dir="$(mktemp -d "${out_dir}/.ava-dmg-stage.XXXXXX")"
+staged="${staged_dir}/$(basename "${OUTPUT}")"
+
 work="$(mktemp -d "${TMPDIR:-/tmp}/ava-dmg.XXXXXX")"
-trap 'rm -rf "${work}"' EXIT HUP INT TERM
-mkdir -p "${work}/staging" "$(dirname "${OUTPUT}")"
+trap 'rm -rf "${work}" "${staged_dir}"' EXIT HUP INT TERM
+mkdir -p "${work}/staging"
 ditto "${APP}" "${work}/staging/Ava.app"
 
 create-dmg \
@@ -32,8 +39,9 @@ create-dmg \
     --icon "Ava.app" 155 200 \
     --hide-extension "Ava.app" \
     --app-drop-link 505 200 \
-    "${OUTPUT}" \
+    "${staged}" \
     "${work}/staging"
 
-hdiutil verify -quiet "${OUTPUT}"
+hdiutil verify -quiet "${staged}"
+mv -f "${staged}" "${OUTPUT}"
 echo "${OUTPUT}"

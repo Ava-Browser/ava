@@ -6,7 +6,6 @@
  * Arc-inspired native macOS Settings window.
  */
 
-import AppKit
 import LadybirdEngine
 import SwiftUI
 
@@ -176,11 +175,14 @@ struct AboutSettingsPane: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 64, height: 64)
-                .accessibilityHidden(true)
+            // The bundle icon arrives through the engine: AppKit is not this target's to touch.
+            if let icon = AppIcon.image {
+                icon
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 64, height: 64)
+                    .accessibilityHidden(true)
+            }
 
             Text("Ava")
                 .font(.title2.bold())

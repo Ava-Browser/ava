@@ -136,21 +136,8 @@ public final class PortWebView: NSView {
         // The scale is only known once AppKit has placed the view in a window, and it changes when the window moves
         // between a Retina and a non-Retina display.
         reportViewport()
-
-        // Order the window front from here rather than from `applicationDidFinishLaunching`: at that point SwiftUI has
-        // not created the window yet, so the app launched correctly but behind whatever was already frontmost, which
-        // reads as "the app did not open". This is the first moment a window exists.
-        //
-        // Synchronous on purpose: S3 forbids a queue hop here, and none is needed because this is already the main
-        // thread, inside the run loop that owns presentation.
-        if let window, !hasOrderedFront {
-            hasOrderedFront = true
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-        }
+        // Launch activation is not here: the start page mounts no web view. See LaunchActivation.
     }
-
-    private var hasOrderedFront = false
 
     public override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
