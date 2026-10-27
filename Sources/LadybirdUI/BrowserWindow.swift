@@ -82,6 +82,9 @@ public struct BrowserWindow: View {
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 620, minHeight: 320)
+            // Orders the window front once per launch, whichever content is showing. It lives at window level because
+            // the start page mounts no web view, so a per-view trigger would miss the default launch entirely.
+            .background(LaunchActivationView())
             // A dialog lives on the tab that asked, so the sheet is attached to whichever tab is selected. The model
             // answers it before switching away or closing, so it can never be presented for an invisible tab.
             .sheet(item: Binding(

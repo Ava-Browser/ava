@@ -38,8 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppSettings.shared.applyAppearance()
 
         // A browser is a regular app: closing the window must be able to end it, and it needs a Dock icon.
-        // Activation happens when the window actually exists — see PortWebView.viewDidMoveToWindow. Activating here
-        // alone leaves the window behind whatever was frontmost, because SwiftUI has not made one yet.
+        // Activation happens when the window actually exists — see LaunchActivation. Activating here alone leaves the
+        // window behind whatever was frontmost, because SwiftUI has not made one yet.
         NSApp.setActivationPolicy(.regular)
     }
 
