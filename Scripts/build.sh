@@ -132,11 +132,16 @@ if [[ ${SWIFT_ONLY} -eq 0 ]]; then
     # Record the commit of the tree CMake just read, so the stamp describes the dylib.
     built_home="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_TREE}/CMakeCache.txt" 2>/dev/null | head -1)"
     built_sha="$(git -C "${built_home:-${FORK}}" rev-parse HEAD 2>/dev/null || echo unknown)"
-    printf '%s\n' "${built_sha}" > "${PIN_STAMP}"
 
     # The checkout can move while a long build runs (an editor, a sync, another worktree). Re-check
     # what was actually produced rather than trusting the tree we looked at beforehand.
+    #
+    # The stamp is written only on the success path. Writing it first would leave a stamped commit for
+    # a build we just rejected: cmake may have compiled before the tree moved, so the dylib is not
+    # necessarily that commit's. If the pin later advanced to it, --swift-only would read the stamp,
+    # see agreement, and link a shim from unknown sources. The marker below cannot match a commit.
     if [[ "${built_sha}" != "${pin_now}" ]]; then
+        printf '%s\n' "invalid: the checkout moved during the build" > "${PIN_STAMP}"
         cat >&2 <<MSG
 error: the engine checkout moved during the build.
 
@@ -149,6 +154,7 @@ Re-run ./Scripts/build.sh once the checkout is stable at ${pin_now}.
 MSG
         exit 1
     fi
+    printf '%s\n' "${built_sha}" > "${PIN_STAMP}"
 elif [[ -f "${PIN_STAMP}" && "$(cat "${PIN_STAMP}")" != "${pin_now}" ]]; then
     # --swift-only links the dylib already on disk, which may predate the checkout moving to the pin:
     # the tree HEAD can be correct while the built shim is not. The stamp is the only record of what
