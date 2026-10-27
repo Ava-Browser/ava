@@ -91,6 +91,35 @@ public struct PortCallbacks {
     }
 }
 
+/// Page-created and page-closed tabs.
+public struct PortPageCallbacks {
+    /// The engine has already created and registered `newTab`; the host must adopt that id rather than creating another.
+    public var onNewTab: ((UInt64, UInt64, Bool, Bool) -> Void)?
+    /// The engine has already destroyed `tab`; the host must remove its UI state without calling destroy again.
+    public var onTabClosed: ((UInt64) -> Void)?
+
+    public init() {}
+}
+
+public struct PortSelectOption: Equatable, Sendable {
+    public let id: UInt32
+    public let label: String
+    public let enabled: Bool
+    public let selected: Bool
+}
+
+public enum PortSelectItem: Equatable, Sendable {
+    case option(PortSelectOption)
+    case separator
+    case group(label: String, options: [PortSelectOption])
+}
+
+public struct PortPickerCallbacks {
+    public var onSelectDropdown: ((UInt64, UInt64, Int32, Int32, Int32, [PortSelectItem]) -> Void)?
+
+    public init() {}
+}
+
 /// Hover feedback: everything a page asks for that is not a click.
 ///
 /// `onCursorChange` is what makes the pointer a pointing hand over a link and an I-beam over text. Without it the page's
@@ -148,16 +177,58 @@ private func decode(_ url: UnsafePointer<CChar>?, _ len: Int) -> String {
     return String(decoding: UnsafeRawBufferPointer(start: url, count: len), as: UTF8.self)
 }
 
+func decodeSelectItems(_ bytes: UnsafePointer<CChar>?, _ length: Int) -> [PortSelectItem]? {
+    guard let bytes, length > 0,
+          let array = try? JSONSerialization.jsonObject(with: Data(bytes: bytes, count: length)) as? [[String: Any]]
+    else { return nil }
+
+    func option(_ object: [String: Any]) -> PortSelectOption? {
+        guard object["type"] as? String == "option",
+              let number = object["id"] as? NSNumber,
+              number.uint64Value <= UInt32.max,
+              let label = object["label"] as? String,
+              let enabled = object["enabled"] as? Bool,
+              let selected = object["selected"] as? Bool
+        else { return nil }
+        return PortSelectOption(id: number.uint32Value, label: label, enabled: enabled, selected: selected)
+    }
+
+    var items: [PortSelectItem] = []
+    for object in array {
+        switch object["type"] as? String {
+        case "option":
+            guard let value = option(object) else { return nil }
+            items.append(.option(value))
+        case "separator":
+            items.append(.separator)
+        case "group":
+            guard let label = object["label"] as? String,
+                  let children = object["items"] as? [[String: Any]]
+            else { return nil }
+            let options = children.compactMap(option)
+            guard options.count == children.count else { return nil }
+            items.append(.group(label: label, options: options))
+        default:
+            return nil
+        }
+    }
+    return items
+}
+
 /// The single `Unmanaged<>` context for one app: the C trampolines carry this, never an object graph.
 private final class CallbackContext: @unchecked Sendable {
     let callbacks: PortCallbacks
     /// The hover group. Held here rather than in a second context so the C trampolines keep carrying exactly one pointer
     /// (S1: the `Unmanaged` box is created once, per app).
     let ui: PortUICallbacks
+    let page: PortPageCallbacks
+    let picker: PortPickerCallbacks
 
-    init(_ callbacks: PortCallbacks, ui: PortUICallbacks) {
+    init(_ callbacks: PortCallbacks, ui: PortUICallbacks, page: PortPageCallbacks, picker: PortPickerCallbacks) {
         self.callbacks = callbacks
         self.ui = ui
+        self.page = page
+        self.picker = picker
     }
 
     static func resolve(_ raw: UnsafeMutableRawPointer?) -> CallbackContext? {
@@ -177,13 +248,16 @@ public final class PortApp {
 
     /// Whether this dylib accepted the UI group. False means it predates the group, or the struct was refused.
     public private(set) var uiCallbacksInstalled = false
+    public private(set) var pageCallbacksInstalled = false
 
     public init?(
         argv0: String = CommandLine.arguments.first ?? "Ava",
         callbacks: PortCallbacks,
-        ui: PortUICallbacks = PortUICallbacks()
+        ui: PortUICallbacks = PortUICallbacks(),
+        page: PortPageCallbacks = PortPageCallbacks(),
+        picker: PortPickerCallbacks = PortPickerCallbacks()
     ) {
-        let context = CallbackContext(callbacks, ui: ui)
+        let context = CallbackContext(callbacks, ui: ui, page: page, picker: picker)
         self.context = context
         self.uiCallbacks = ui
 
@@ -253,6 +327,45 @@ public final class PortApp {
         self.handle = handle
 
         installUICallbacks()
+        installPageCallbacks()
+        installPickerCallbacks()
+    }
+
+    private func installPickerCallbacks() {
+        guard let handle else { return }
+
+        var group = LbPickerCallbacks()
+        group.struct_size = UInt32(MemoryLayout<LbPickerCallbacks>.size)
+        group.version = UInt32(LB_CALLBACKS_VERSION)
+        if context.picker.onSelectDropdown != nil {
+            group.on_request_select_dropdown = { raw, tab, requestID, x, y, minimumWidth, json, length in
+                guard let context = CallbackContext.resolve(raw) else { return }
+                let items = decodeSelectItems(json, length) ?? []
+                MainActor.assumeIsolated {
+                    context.picker.onSelectDropdown?(tab, requestID, x, y, minimumWidth, items)
+                }
+            }
+        }
+        _ = LbAppSetPickerCallbacks(handle, &group)
+    }
+
+    private func installPageCallbacks() {
+        guard let handle else { return }
+
+        var group = LbPageCallbacks()
+        group.struct_size = UInt32(MemoryLayout<LbPageCallbacks>.size)
+        group.version = UInt32(LB_CALLBACKS_VERSION)
+        group.on_new_tab = { raw, parentTab, newTab, activateTab, isPopup in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onNewTab
+            MainActor.assumeIsolated { callback?(parentTab, newTab, activateTab != 0, isPopup != 0) }
+        }
+        group.on_tab_closed = { raw, tab in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onTabClosed
+            MainActor.assumeIsolated { callback?(tab) }
+        }
+        pageCallbacksInstalled = LbAppSetPageCallbacks(handle, &group) == 1
     }
 
     /// Registers the hover group. Called once, after the app exists: the group is size-tagged, so a dylib that predates it
@@ -341,6 +454,11 @@ public final class PortApp {
         return LbTabCreate(handle)
     }
 
+    public func setActiveTab(_ tab: UInt64) {
+        guard let handle else { return }
+        LbAppSetActiveTab(handle, tab)
+    }
+
     /// Destroys one tab's engine page. Stop presenting its surface first — see the header's note on ordering.
     public func destroyTab(_ tab: UInt64) {
         guard let handle else { return }
@@ -377,6 +495,11 @@ public final class PortApp {
     public func answerBeforeUnload(in tab: UInt64, accept: Bool) {
         guard let handle else { return }
         LbTabAnswerBeforeUnload(handle, tab, accept ? 1 : 0)
+    }
+
+    public func answerSelectDropdown(in tab: UInt64, requestID: UInt64, selection: UInt32?) {
+        guard let handle else { return }
+        LbTabAnswerSelectDropdown(handle, tab, requestID, selection == nil ? 0 : 1, selection ?? 0)
     }
 
     /// Navigates the tab, returning the URL actually navigated to -- which differs from the argument whenever the input
@@ -441,12 +564,13 @@ public final class PortApp {
         button: PortMouseButton = .none,
         buttons: PortMouseButton = .none,
         clickCount: Int32 = 0,
-        wheelDeltaY: Double = 0
+        wheelDeltaY: Double = 0,
+        modifiers: UInt32 = 0
     ) {
         guard let handle else { return }
-        LbTabSendMouse(
+        LbTabSendMouseWithModifiers(
             handle, tab, type.cValue, x, y,
-            button.cValue, buttons.cValue, clickCount, wheelDeltaY
+            button.cValue, buttons.cValue, clickCount, wheelDeltaY, modifiers
         )
     }
 
