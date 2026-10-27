@@ -99,7 +99,17 @@ public final class BrowserModel {
             failure = "Internal error: a second browser model tried to start the engine."
             return
         }
-        guard let app = PortApp(callbacks: callbacks) else {
+        // Hover feedback: the page's cursor and its hovered link. Without the cursor half, every element looks inert
+        // however correctly it is styled, because the pointer never changes shape.
+        var ui = PortUICallbacks()
+        ui.onCursorChange = { [weak self] engineID, cursor in
+            MainActor.assumeIsolated {
+                guard let self, engineID == self.selectedTab?.engineID else { return }
+                self.webView.applyCursor(cursor)
+            }
+        }
+
+        guard let app = PortApp(callbacks: callbacks, ui: ui) else {
             failure = """
                 The engine could not be started.
 

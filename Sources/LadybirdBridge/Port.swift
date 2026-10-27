@@ -91,6 +91,57 @@ public struct PortCallbacks {
     }
 }
 
+/// Hover feedback: everything a page asks for that is not a click.
+///
+/// `onCursorChange` is what makes the pointer a pointing hand over a link and an I-beam over text. Without it the page's
+/// cursor never reaches AppKit and every element looks inert, however correctly it is styled.
+public struct PortUICallbacks {
+    public var onCursorChange: ((UInt64, PortCursor) -> Void)?
+    public var onLinkHover: ((UInt64, String) -> Void)?
+    public var onLinkUnhover: ((UInt64) -> Void)?
+    public var onTooltipOverride: ((UInt64, Int32, Int32, String) -> Void)?
+    public var onStopTooltipOverride: ((UInt64) -> Void)?
+    public var onEnterTooltipArea: ((UInt64, String) -> Void)?
+    public var onLeaveTooltipArea: ((UInt64) -> Void)?
+
+    public init() {}
+
+    var hasCursorCallback: Bool { onCursorChange != nil }
+}
+
+/// One cursor the page asked for: either a standard system cursor, or an image with a hotspot to tip it at.
+public enum PortCursor {
+    /// A `Gfx::StandardCursor` ordinal. `PortStandardCursor` names the ones a browser actually needs.
+    case standard(Int32)
+    /// PNG-encoded image plus the hotspot, in image pixels from its top-left.
+    case image(Data, hotspotX: Int32, hotspotY: Int32)
+}
+
+/// The `Gfx::StandardCursor` ordinals the ABI passes through. The engine's own numbering, so these are the values from
+/// `Libraries/LibGfx/Cursor.h` rather than a renumbering.
+public enum PortStandardCursor {
+    public static let hidden: Int32 = 1
+    public static let arrow: Int32 = 2
+    public static let crosshair: Int32 = 3
+    public static let iBeam: Int32 = 4
+    public static let resizeHorizontal: Int32 = 5
+    public static let resizeVertical: Int32 = 6
+    public static let resizeDiagonalTLBR: Int32 = 7
+    public static let resizeDiagonalBLTR: Int32 = 8
+    public static let resizeColumn: Int32 = 9
+    public static let resizeRow: Int32 = 10
+    public static let hand: Int32 = 11
+    public static let help: Int32 = 12
+    public static let openHand: Int32 = 13
+    public static let drag: Int32 = 14
+    public static let dragCopy: Int32 = 15
+    public static let move: Int32 = 16
+    public static let wait: Int32 = 17
+    public static let disallowed: Int32 = 18
+    public static let eyedropper: Int32 = 19
+    public static let zoom: Int32 = 20
+}
+
 /// Decodes the `url`/`len` pair the ABI hands across. The bytes are valid for that call only.
 private func decode(_ url: UnsafePointer<CChar>?, _ len: Int) -> String {
     guard let url, len > 0 else { return "" }
@@ -100,9 +151,13 @@ private func decode(_ url: UnsafePointer<CChar>?, _ len: Int) -> String {
 /// The single `Unmanaged<>` context for one app: the C trampolines carry this, never an object graph.
 private final class CallbackContext: @unchecked Sendable {
     let callbacks: PortCallbacks
+    /// The hover group. Held here rather than in a second context so the C trampolines keep carrying exactly one pointer
+    /// (S1: the `Unmanaged` box is created once, per app).
+    let ui: PortUICallbacks
 
-    init(_ callbacks: PortCallbacks) {
+    init(_ callbacks: PortCallbacks, ui: PortUICallbacks) {
         self.callbacks = callbacks
+        self.ui = ui
     }
 
     static func resolve(_ raw: UnsafeMutableRawPointer?) -> CallbackContext? {
@@ -116,12 +171,21 @@ public final class PortApp {
     private var handle: OpaquePointer?
     private let context: CallbackContext
 
+    /// The installed UI group, kept so the registration can report whether the dylib accepted it. A refusal costs the
+    /// feature and nothing else, which is the whole point of the size-tagged groups.
+    private var uiCallbacks: PortUICallbacks
+
+    /// Whether this dylib accepted the UI group. False means it predates the group, or the struct was refused.
+    public private(set) var uiCallbacksInstalled = false
+
     public init?(
         argv0: String = CommandLine.arguments.first ?? "Ava",
-        callbacks: PortCallbacks
+        callbacks: PortCallbacks,
+        ui: PortUICallbacks = PortUICallbacks()
     ) {
-        let context = CallbackContext(callbacks)
+        let context = CallbackContext(callbacks, ui: ui)
         self.context = context
+        self.uiCallbacks = ui
 
         var c = LbCallbacks()
         c.context = Unmanaged.passUnretained(context).toOpaque()
@@ -187,6 +251,69 @@ public final class PortApp {
 
         guard let handle = argv0.withCString({ LbAppCreate($0, &c) }) else { return nil }
         self.handle = handle
+
+        installUICallbacks()
+    }
+
+    /// Registers the hover group. Called once, after the app exists: the group is size-tagged, so a dylib that predates it
+    /// returns 0 and the app simply has no hover feedback rather than misreading the struct.
+    private func installUICallbacks() {
+        guard let handle else { return }
+
+        var group = LbUiCallbacks()
+        group.struct_size = UInt32(MemoryLayout<LbUiCallbacks>.size)
+        group.version = UInt32(LB_CALLBACKS_VERSION)
+
+        group.on_cursor_change = { raw, tab, standard, png, pngLen, hotspotX, hotspotY in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.ui.onCursorChange
+            guard callback != nil else { return }
+            let cursor: PortCursor
+            if standard == Int32(LbCursorImage), let png, pngLen > 0 {
+                cursor = .image(Data(bytes: png, count: pngLen), hotspotX: hotspotX, hotspotY: hotspotY)
+            } else {
+                cursor = .standard(standard)
+            }
+            MainActor.assumeIsolated { callback?(tab, cursor) }
+        }
+        group.on_link_hover = { raw, tab, url, len in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.ui.onLinkHover
+            guard callback != nil else { return }
+            let string = decode(url, len)
+            MainActor.assumeIsolated { callback?(tab, string) }
+        }
+        group.on_link_unhover = { raw, tab in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.ui.onLinkUnhover
+            MainActor.assumeIsolated { callback?(tab) }
+        }
+        group.on_request_tooltip_override = { raw, tab, x, y, text, len in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.ui.onTooltipOverride
+            guard callback != nil else { return }
+            let string = decode(text, len)
+            MainActor.assumeIsolated { callback?(tab, x, y, string) }
+        }
+        group.on_stop_tooltip_override = { raw, tab in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.ui.onStopTooltipOverride
+            MainActor.assumeIsolated { callback?(tab) }
+        }
+        group.on_enter_tooltip_area = { raw, tab, text, len in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.ui.onEnterTooltipArea
+            guard callback != nil else { return }
+            let string = decode(text, len)
+            MainActor.assumeIsolated { callback?(tab, string) }
+        }
+        group.on_leave_tooltip_area = { raw, tab in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.ui.onLeaveTooltipArea
+            MainActor.assumeIsolated { callback?(tab) }
+        }
+
+        uiCallbacksInstalled = LbAppSetUiCallbacks(handle, &group) == 1
     }
 
     /// The header's own pump driver: a `CFRunLoopTimer` in `kCFRunLoopCommonModes`, so a live resize or a held menu
@@ -403,6 +530,14 @@ public enum PortKey {
     // Web's `KeyCode` ordinals are the legacy character codes, not a dense 0..n sequence, so these are the values from
     // Libraries/LibWebCommon/UIEvents/KeyCode.h rather than a guess. Only the non-text keys are mirrored: a text key
     // crosses as `code_point` with `invalid` as the key, which is what the engine reads anyway.
+    // The letters, needed only for the Command editing shortcuts: without them ⌘C sends no key and the engine's
+    // `KeyCode::Key_C` check never matches. A bare letter still travels as `code_point`, which is what inserts text.
+    public static let keyA: Int32 = 0x41
+    public static let keyC: Int32 = 0x43
+    public static let keyV: Int32 = 0x56
+    public static let keyX: Int32 = 0x58
+    public static let keyZ: Int32 = 0x5A
+
     public static let backspace: Int32 = 0x08
     public static let tab: Int32 = 0x09
     public static let enter: Int32 = 0x0D
