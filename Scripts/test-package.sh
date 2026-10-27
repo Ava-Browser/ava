@@ -27,7 +27,10 @@ bad() { echo "  FAIL $1"; fail=1; }
 # The shape package.sh navigates: Build/release/{bin/Ladybird.app/Contents/{MacOS,Resources},lib},
 # plus the vcpkg dynamic dir. The dylibs are real, with real @rpath install names, so otool and dyld see
 # exactly what they would see in the real tree — stubs would make the closure walk meaningless.
-FIXTURE="${WORK}/fixture"
+# A space in the path is deliberate: otool prints LC_RPATH values unescaped, so a checkout under a
+# directory like "browsers/ava" or "My Projects" produces rpaths that a field-splitting parse truncates.
+# Every rpath in this run contains a space, which keeps that bug caught rather than rediscovered.
+FIXTURE="${WORK}/engine tree"
 mkdir -p "${FIXTURE}/bin/Ladybird.app/Contents/MacOS" "${FIXTURE}/bin/Ladybird.app/Contents/Resources/themes" "${FIXTURE}/lib" "${FIXTURE}/vcpkg"
 
 cat > "${WORK}/leaf.c" <<'EOF'

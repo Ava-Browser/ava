@@ -109,6 +109,13 @@ done
 echo "    $(grep -c . <<< "${copied}") dylibs"
 
 # ---------------------------------------------------------------- rpaths
+# Every LC_RPATH entry, one per line. Parsed by slicing between "path " and " (offset ...)" rather than
+# by field: otool does not escape the path, so a checkout directory containing a space would be
+# truncated to its first word — and deleting a truncated rpath fails, or worse, matches nothing.
+read_rpaths() {
+    otool -l "$1" | awk '/LC_RPATH/ { getline; getline; sub(/^[ \t]*path /, ""); sub(/ \(offset .*/, ""); print }'
+}
+
 # The engine tree's rpaths are absolute paths into the build directory. On a user's machine they do not
 # exist, and on a developer's machine they *do* — pointing at a dylib built from some other commit, which
 # is the ABI mismatch that crashes at startup. Drop them and point everything at the bundle instead.
@@ -122,7 +129,7 @@ relocate() {
             *) install_name_tool -delete_rpath "${rpath}" "${image}" \
                    || die "could not remove rpath ${rpath} from $(basename "${image}")" ;;
         esac
-    done < <(otool -l "${image}" | awk '/LC_RPATH/ { getline; getline; print $2 }')
+    done < <(read_rpaths "${image}")
 }
 for helper in "${HELPERS[@]}"; do
     relocate "${APP}/Contents/MacOS/${helper}"
@@ -245,7 +252,7 @@ for image in "${APP}/Contents/MacOS/Ava" "${APP}/Contents/MacOS/"* "${LIBS}"/*.d
             @*|/usr/lib/swift) ;;
             *) missing+=("non-bundle rpath ${rpath} in $(basename "${image}")") ;;
         esac
-    done < <(otool -l "${image}" | awk '/LC_RPATH/ { getline; getline; print $2 }')
+    done < <(read_rpaths "${image}")
 done
 [[ ${#missing[@]} -eq 0 ]] || die "bundle is not self-contained: ${missing[*]}"
 
