@@ -25,8 +25,71 @@ public final class PortWebView: NSView {
     public var onKey: ((Int32, UInt32, UInt32, Bool) -> Void)?
     public var onTypeText: ((String) -> Void)?
 
+    /// The cursor the page most recently asked for. Applied through `resetCursorRects`, which AppKit recomputes on
+    /// scroll and resize, so the pointer cannot be left showing a shape the page no longer wants.
+    private var pageCursor: NSCursor = .arrow { didSet { window?.invalidateCursorRects(for: self) } }
+
     /// The view must be first responder for key events to arrive at all.
     public override var acceptsFirstResponder: Bool { true }
+
+    // MARK: - Hover
+
+    /// AppKit delivers `mouseMoved` only through a tracking area (or with `window.acceptsMouseMovedEvents`), so without
+    /// this the engine never sees a pointer move: no `:hover`, no cursor change, no tooltips. Clicks keep working, which
+    /// is what made the omission look like a styling problem rather than a missing event.
+    public override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas {
+            removeTrackingArea(area)
+        }
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect, .cursorUpdate],
+            owner: self,
+            userInfo: nil
+        ))
+    }
+
+    /// Sets the pointer for the whole view. `resetCursorRects` is the sanctioned way to make it stick through scrolling;
+    /// calling `NSCursor.set()` alone is undone by the next cursor-rect pass.
+    public func applyCursor(_ cursor: PortCursor) {
+        switch cursor {
+        case let .standard(ordinal):
+            pageCursor = PortWebView.cursor(for: ordinal)
+        case let .image(data, hotspotX, hotspotY):
+            if let image = NSImage(data: data) {
+                pageCursor = NSCursor(image: image, hotSpot: NSPoint(x: CGFloat(hotspotX), y: CGFloat(hotspotY)))
+            }
+        }
+        pageCursor.set()
+    }
+
+    public override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: pageCursor)
+    }
+
+    public override func cursorUpdate(with event: NSEvent) {
+        pageCursor.set()
+    }
+
+    /// `Gfx::StandardCursor` ordinals to AppKit. The image case is handled by the caller; anything unmapped stays an arrow
+    /// rather than guessing at a shape the engine did not name.
+    static func cursor(for ordinal: Int32) -> NSCursor {
+        switch ordinal {
+        case PortStandardCursor.hidden: .init()
+        case PortStandardCursor.crosshair: .crosshair
+        case PortStandardCursor.iBeam: .iBeam
+        case PortStandardCursor.resizeHorizontal, PortStandardCursor.resizeColumn: .resizeLeftRight
+        case PortStandardCursor.resizeVertical, PortStandardCursor.resizeRow: .resizeUpDown
+        case PortStandardCursor.hand: .pointingHand
+        case PortStandardCursor.openHand: .openHand
+        case PortStandardCursor.drag: .closedHand
+        case PortStandardCursor.move: .openHand
+        case PortStandardCursor.disallowed: .operationNotAllowed
+        default: .arrow
+        }
+    }
 
     /// Which engine tab this view is currently showing. Owned by the model; the view only uses it to label benchmarks,
     /// so that a frame logged during a tab switch is attributable to the right page.
@@ -203,9 +266,13 @@ public final class PortWebView: NSView {
         if flags.contains(.shift) { modifiers |= PortKey.modShift }
         if flags.contains(.command) { modifiers |= PortKey.modSuper }
 
-        // Web's KeyCode ordinals for the non-text keys worth mapping, so Backspace and navigation work before the
-        // full table is bridged. Text keys are left unresolved on purpose.
+        // Web's KeyCode ordinals. The letters are here only for the Command shortcuts: a bare letter still travels as a
+        // `code_point`, because that is what inserts text, and mapping it here would deliver a key the engine resolves
+        // as a command instead of a character.
         let key: Int32
+        if flags.contains(.command), let letter = PortWebView.commandLetterKey(event) {
+            return (letter, 0, modifiers)
+        }
         switch event.keyCode {
         // These are AppKit's virtual key codes (ANSI layout), not characters.
         case 51: key = PortKey.backspace
@@ -222,7 +289,10 @@ public final class PortWebView: NSView {
         default: key = PortKey.invalid
         }
 
-        // Never take characters for a command shortcut: those belong to the menu bar, not the page.
+        // Never take characters for a command shortcut: those belong to the menu bar, not the page. The key itself must
+        // still cross, though, because the engine's editing shortcuts match `KeyCode::Key_C` and friends under
+        // `Mod_PlatformCtrl` (which is `Mod_Super` on macOS) -- see EventHandler. Sending `(invalid, 0, Mod_Super)`, as
+        // this did, is delivered, handled and does nothing, so copy/paste/cut/select-all/undo were all silent no-ops.
         var codePoint: UInt32 = 0
         if !flags.contains(.command), let characters = event.characters, let first = characters.unicodeScalars.first {
             // Control characters are what AppKit gives for Return/Tab/Backspace; the engine wants the key, not the byte.
@@ -232,6 +302,21 @@ public final class PortWebView: NSView {
         }
 
         return (key, codePoint, modifiers)
+    }
+
+    /// The `KeyCode` for the letter behind a Command shortcut, or nil when the key is not one the engine matches.
+    ///
+    /// `EventHandler` compares against `KeyCode::Key_A/C/V/X/Z` under `Mod_PlatformCtrl`, so those five are the ones worth
+    /// mapping; the rest of the alphabet has no editing command and is left to the menu bar.
+    static func commandLetterKey(_ event: NSEvent) -> Int32? {
+        switch event.keyCode {
+        case 0: PortKey.keyA
+        case 8: PortKey.keyC
+        case 9: PortKey.keyV
+        case 7: PortKey.keyX
+        case 6: PortKey.keyZ
+        default: nil
+        }
     }
 
     /// R3: assign and return. The surface is borrowed from the engine and is only valid on this call stack; `CALayer`

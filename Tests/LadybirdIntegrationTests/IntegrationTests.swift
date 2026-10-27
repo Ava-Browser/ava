@@ -263,3 +263,43 @@ struct PortWebViewPresentationTests {
         #expect(layer.contents == nil)
     }
 }
+
+/*
+ * The pointer and the Command shortcuts. Both were silently broken in ways that look like styling problems: the page's
+ * cursor never reached AppKit, and ⌘C crossed the ABI as (invalid, 0, Mod_Super) so no editing shortcut ever matched.
+ */
+
+import AppKit
+
+@MainActor
+@Suite("Hover and key translation")
+struct HoverAndKeyTranslationTests {
+    @Test("A hand cursor maps to the pointing hand")
+    func handCursor() {
+        #expect(PortWebView.cursor(for: PortStandardCursor.hand) == .pointingHand)
+    }
+
+    @Test("A text cursor maps to the I-beam")
+    func textCursor() {
+        #expect(PortWebView.cursor(for: PortStandardCursor.iBeam) == .iBeam)
+    }
+
+    @Test("An unmapped cursor ordinal stays an arrow rather than guessing")
+    func unmappedCursor() {
+        #expect(PortWebView.cursor(for: 9999) == .arrow)
+    }
+
+    @Test("Applying a standard cursor does not trap and keeps the view's cursor")
+    func applyStandardCursor() {
+        let view = PortWebView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        view.applyCursor(.standard(PortStandardCursor.hand))
+        // resetCursorRects is what makes it survive scrolling; calling it must be safe with no window attached.
+        view.resetCursorRects()
+    }
+
+    @Test("Applying an image cursor falls back instead of trapping on undecodable bytes")
+    func applyImageCursor() {
+        let view = PortWebView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        view.applyCursor(.image(Data([0x00, 0x01, 0x02]), hotspotX: 0, hotspotY: 0))
+    }
+}
