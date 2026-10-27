@@ -49,7 +49,8 @@ EXECUTABLE="$(swift build --show-bin-path)/Ava"
 # copying anything. rpaths still resolve through the real path.
 # Keep the existing bundle identifier below so saved preferences survive the product rename.
 BUNDLE_DIR="${REPO_ROOT}/.build/Ava.app"
-mkdir -p "${BUNDLE_DIR}/Contents/MacOS"
+mkdir -p "${BUNDLE_DIR}/Contents/MacOS" "${BUNDLE_DIR}/Contents/Resources"
+cp "${REPO_ROOT}/Resources/app_icon.icns" "${BUNDLE_DIR}/Contents/Resources/app_icon.icns"
 cat > "${BUNDLE_DIR}/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -60,6 +61,7 @@ cat > "${BUNDLE_DIR}/Contents/Info.plist" <<'PLIST'
 <key>CFBundleDisplayName</key><string>Ava</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1</string>
+<key>CFBundleIconFile</key><string>app_icon.icns</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: BSD-2-Clause -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 300 300" role="img" aria-labelledby="title desc">
+  <title id="title">Ava — Ink Lift</title>
+  <desc id="desc">A charcoal organic arch on a warm ivory field.</desc>
+  <rect width="300" height="300" fill="#F3F1EB"/>
+  <path d="M61 230 C25 203 24 150 47 108 C74 58 122 33 174 42 C225 51 258 91 258 142 C258 180 242 213 212 238 C228 197 226 164 208 137 C190 110 163 99 135 109 C108 118 98 145 102 174 C106 202 96 225 79 232 Q69 237 61 230Z" fill="#242728" transform="translate(61.5 62.3) scale(.6277)"/>
+</svg>

@@ -88,6 +88,7 @@ PACKAGE="${WORK}/package.sh"
 sed -e "s|^BUILD_DIR=.*|BUILD_DIR=\"${FIXTURE}\"|" \
     -e "s|^VCPKG_LIB=.*|VCPKG_LIB=\"${FIXTURE}/vcpkg\"|" \
     -e "s|^OUT_DIR=.*|OUT_DIR=\"${WORK}/out\"|" \
+    -e "s|^APP_ICON=.*|APP_ICON=\"${REPO_ROOT}/Resources/app_icon.icns\"|" \
     "${REPO_ROOT}/Scripts/package.sh" > "${PACKAGE}"
 chmod +x "${PACKAGE}"
 
@@ -112,6 +113,8 @@ for helper in WebContent WebWorker Compositor RequestServer MediaServer AudioSer
     [[ -x "${APP}/Contents/MacOS/${helper}" ]] || bad "helper ${helper} missing"
 done
 [[ -f "${APP}/Contents/Resources/themes/Default.ini" ]] && ok "resources copied" || bad "resources missing"
+[[ -f "${APP}/Contents/Resources/app_icon.icns" ]] && ok "app icon copied" || bad "app icon missing"
+[[ -f "${WORK}/out/dmg/.VolumeIcon.icns" ]] && ok "DMG volume icon copied" || bad "DMG volume icon missing"
 
 # Nothing may still name the build tree: that is the stale-rpath bug that loads another checkout's dylib.
 stale=""

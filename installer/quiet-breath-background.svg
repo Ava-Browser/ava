@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: BSD-2-Clause -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="772" viewBox="0 0 660 386">
+  <rect width="660" height="386" fill="#EDEBE5"/>
+  <path d="M245 205 Q330 180 415 205" fill="none" stroke="#242728" stroke-opacity=".2" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M403 197 L415 205 L402 207" fill="none" stroke="#242728" stroke-opacity=".2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

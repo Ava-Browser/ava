@@ -442,6 +442,10 @@ private struct EssentialTile: View {
         model.selectedTabID == tab.id
     }
 
+    private var isAvaStartPage: Bool {
+        tab.currentURL.isEmpty || tab.currentURL == AppSettings.blankPageURL
+    }
+
     var body: some View {
         Button {
             model.select(tab)
@@ -466,6 +470,11 @@ private struct EssentialTile: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 24, height: 24)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .accessibilityHidden(true)
+                } else if isAvaStartPage {
+                    LiftMark()
+                        .fill(isSelected ? Color.primary : Color.secondary)
+                        .frame(width: 24, height: 24)
                         .accessibilityHidden(true)
                 } else {
                     Image(systemName: "globe")
@@ -504,6 +513,10 @@ private struct TabRowView: View {
         model.selectedTabID == tab.id
     }
 
+    private var isAvaStartPage: Bool {
+        tab.currentURL.isEmpty || tab.currentURL == AppSettings.blankPageURL
+    }
+
     var body: some View {
         HStack(spacing: 4) {
             // Main Selection Area
@@ -523,6 +536,11 @@ private struct TabRowView: View {
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 16, height: 16)
                             .clipShape(RoundedRectangle(cornerRadius: 3))
+                            .accessibilityHidden(true)
+                    } else if isAvaStartPage {
+                        LiftMark()
+                            .fill(isSelected ? Color.primary : Color.secondary)
+                            .frame(width: 16, height: 16)
                             .accessibilityHidden(true)
                     } else {
                         Image(systemName: tab.isLoaded ? "globe" : "moon.zzz")

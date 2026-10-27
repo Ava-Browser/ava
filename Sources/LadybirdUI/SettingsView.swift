@@ -6,6 +6,7 @@
  * Arc-inspired native macOS Settings window.
  */
 
+import AppKit
 import LadybirdEngine
 import SwiftUI
 
@@ -175,11 +176,10 @@ struct AboutSettingsPane: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "globe")
+            Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 48, height: 48)
-                .foregroundStyle(.tint)
+                .frame(width: 64, height: 64)
                 .accessibilityHidden(true)
 
             Text("Ava")
