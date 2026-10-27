@@ -87,9 +87,25 @@ whole time. *Fix: compare the pin against the `CMAKE_HOME_DIRECTORY` checkout's 
 that was actually built, and print a `note:` when a separate checkout is in use rather than passing
 quietly.* Only `check-layers.sh` caught this before; now both do.
 
+**A new worktree never shares `Build/release`.** Git shares submodule *history* between worktrees
+(hardlinked objects) but not the build tree, so a fresh worktree costs a cold engine build however
+cheap its checkout was. The one sanctioned shortcut is a `Build/release` symlink to another checkout,
+and the provenance check above is what makes it safe: it compares the pin against the checkout
+`CMAKE_HOME_DIRECTORY` actually names, so a symlink at the wrong commit is refused rather than
+silently compiled.
+
 **A stale remote-tracking ref will make you doubt a real push.**
 `git cat-file -t <sha>` against a submodule fails until `git fetch` — the ref is local and stale,
 the object genuinely absent. *Fix: fetch before concluding a push did not happen.*
+
+**A worktree inherits the submodule pin but none of its bytes.**
+`git worktree add` checks out the superproject commit, so `git rev-parse HEAD:Extern/ladybird`
+reports the correct pin immediately — while `Extern/ladybird/` is an empty directory with no
+`.git`. `git submodule status` prints a leading `-` (`-4b042dd... Extern/ladybird`), which is the
+only signal that nothing is checked out. A build or `check-layers.sh` in that worktree then fails
+for a reason that looks nothing like a missing submodule.
+*Fix: `git -c protocol.file.allow=always submodule update --init Extern/ladybird` in each new
+worktree. Never copy `Extern/ladybird/.git` from another checkout to skip this.*
 
 **A copied submodule `.git` file can make Git inspect a different worktree than the bytes you build.**
 An Orca worktree inherited `Extern/ladybird/.git` pointing at the main checkout's module gitdir,
@@ -99,6 +115,50 @@ and `diff` read the main bytes. Same HEAD plus clean status was true — for the
 *Fix: each outer worktree gets isolated submodule git metadata. Verify both
 `git -C Extern/ladybird rev-parse --show-toplevel` and raw file hashes; never infer byte identity
 from HEAD/status alone. Preserve both trees before repairing a pointer.*
+
+The mechanism, measured on git 2.56: a worktree's submodule clone lives at
+`.git/worktrees/<id>/modules/Extern/ladybird`, and its working copy's `.git` file points there
+(`gitdir: ../../../.git/worktrees/<id>/modules/Extern/ladybird`). Objects are **hardlinks** into the
+main checkout's `.git/modules/Extern/ladybird` — same inode, so the shared engine history costs no
+extra disk — while HEAD, refs, index and config are per-worktree files. That directory is what
+`core.worktree` in `.git/modules/Extern/ladybird/config` must name, and it can only name one path.
+
+**Sibling worktrees' submodule clones are isolated, not merely separate refs.**
+A commit made on a local branch inside one worktree's submodule is not readable from another's
+(`git cat-file -t <sha>` fails). So a fetch, branch or detached checkout in one worktree does not
+propagate: `git submodule update` in the second worktree is what moves it, and it moves only to that
+worktree's recorded pin. This is why one writer per worktree is safe, and why "I pushed from the
+other checkout" is not evidence about this one.
+
+**`git worktree remove` refuses a worktree that contains a submodule.**
+It fails with `working trees containing submodules cannot be moved or removed`. `-f` removes it and
+cleans `.git/worktrees/<id>`; the main checkout's submodule is untouched afterwards. A second `-f`
+reports `is not a working tree` — that is success, not an error.
+
+**An absent dialog callback does NOT make the engine answer itself.**
+`ladybird_port.h` claims the four blocking dialogs are safe to omit because "the engine answers itself".
+It does not, for this shim: `PortWebView` derives from `HeadlessWebView`, whose constructor already
+installed handlers that only record `m_pending_dialog`. `LibPort` replaces those handlers when the host
+supplies a callback and leaves the recording ones otherwise, and nothing then calls `alert_closed` /
+`confirm_closed` / `prompt_closed`. `Page::did_request_alert` is parked in
+`spin_event_loop_until_dialog_closed`, so the tab wedges permanently. The guarantee holds for a fresh
+`ViewImplementation`, which a `HeadlessWebView` is not. *Fix: every request callback the shim adds must
+have its own always-installed handler that answers "unavailable" when the host's callback is absent;
+never inherit the absent-means-safe assumption. Grouped host callbacks stay all-or-none.*
+
+**A `mouseMoved` override receives nothing without a tracking area.**
+AppKit delivers move events to a view only through an `NSTrackingArea` (or with
+`window.acceptsMouseMovedEvents`). `PortWebView` overrides the method and installs neither, so CSS `:hover`,
+the pointing-hand cursor over links, and tooltips were all silently absent while clicks worked.
+*Fix: tracking area with `.mouseMoved`/`.mouseEntered`/`.mouseExited`/`.activeInKeyWindow`/`.inVisibleRect`,
+plus cursor rects (or `cursorUpdate`) for the pointer.*
+
+**⌘-modified letter keys must cross the ABI as a `KeyCode`, not as `code_point`.**
+The engine's editing shortcuts match `KeyCode::Key_C` / `Key_V` / `Key_X` / `Key_A` / `Key_Z` under
+`Mod_PlatformCtrl` (which is `Mod_Super` on macOS) — see `EventHandler`. A host that suppresses
+`code_point` when Command is held and maps only non-text virtual key codes delivers
+`(invalid, 0, Mod_Super)` for every one of them, so copy, paste, cut, select-all and undo do nothing and
+report no error. *Fix: map the letter virtual key codes too, and send the key with Command still set.*
 
 **The R7 fork-diff guard must diff against the merge-base, not `upstream/master`.**
 Otherwise every commit upstream has landed since this fork's HEAD looks like a local change and the
