@@ -49,14 +49,26 @@ cd ava
 
 The runner creates `.build/Ava.app` and configures development paths for the engine's libraries and helper processes. This is a local development bundle, not a self-contained distributable application.
 
+### Package a distributable
+
+```bash
+./Scripts/package.sh                                   # ad hoc signed, runs locally
+./Scripts/package.sh --identity "Developer ID Application: ..."
+```
+
+That builds a release app with the shim, its dependency closure, the helper processes and the engine's resources inside the bundle, rewrites the engine's absolute rpaths to `@loader_path`, and writes `Ava-<version>.dmg`. It refuses to finish if any dependency still resolves outside the bundle. Distributing to other machines additionally needs notarization; the script prints the steps.
+
 ### Checks
 
 ```bash
 swift test
 bash ./Scripts/check-layers.sh
+bash ./Scripts/test-package.sh    # packaging, against a synthetic engine tree
 ```
 
-The layer guard works with macOS's bundled Bash. GitHub Actions compiles the application and test targets and checks layer boundaries; it does not link the engine or execute tests.
+The layer guard works with macOS's bundled Bash. GitHub Actions compiles the application and test targets, checks layer boundaries, and runs the packaging test; it does not link the engine or execute tests.
+
+CI does not build the engine — that is a multi-hour vcpkg and Qt build. So `test-package.sh` exercises the real `Scripts/package.sh` against a synthetic engine tree and asserts what packaging actually promises: a complete dependency closure, no absolute build-tree paths, correct entitlements, and executables that load. It reproduces both packaging failures that reached `main`. A separate `package` job builds and launches a real DMG, and runs only when the repository variable `AVA_ENGINE_BUILD_DIR` names a prebuilt engine; it is skipped rather than faked when there is none.
 
 The layer check validates architectural boundaries and the allowed changes to the engine fork. Native engine probes live under `Extern/ladybird/Tests/LibWebView/TestNative*`; some open windows and require an interactive desktop session.
 

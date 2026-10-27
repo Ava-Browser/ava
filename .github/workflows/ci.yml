@@ -43,5 +43,73 @@ jobs:
           swift build --target LadybirdBridgeTests
           swift build --target LadybirdIntegrationTests
 
-      # CI checks source compilation and boundaries, not runtime behavior. Run swift test
-      # locally after building the engine; native probes also need an interactive desktop.
+      # Packaging is the one script a push can break without any Swift file changing, and it broke
+      # twice already: an uncommented comment line in build.sh, and signing the bundle after the
+      # executable, which silently re-signed away the entitlements the engine needs to load its shim.
+      # This runs the real package.sh against a synthetic engine tree, so it needs no engine build.
+      - name: Package assembly
+        run: /bin/bash ./Scripts/test-package.sh
+
+  # The assembly test above proves package.sh does not lie about what it shipped, but it cannot prove
+  # the real engine runs from the image — that needs the real helpers, the real dylib closure and the
+  # real Resources. This job builds those on a runner that already has an engine tree, and is skipped
+  # (not failed) elsewhere: faking it would report green for a bundle nobody built.
+  package:
+    needs: checks
+    if: vars.AVA_ENGINE_BUILD_DIR != ''
+    runs-on: ${{ vars.AVA_ENGINE_RUNNER || 'macos-15' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Point the package at the prebuilt engine
+        env:
+          ENGINE_BUILD_DIR: ${{ vars.AVA_ENGINE_BUILD_DIR }}
+        run: ln -sfn "${ENGINE_BUILD_DIR}" Extern/ladybird/Build/release
+
+      # --no-build skips the engine/shim build only; the Swift app still has to be compiled, and it
+      # links against the prebuilt shim above.
+      - name: Build the release app
+        run: swift build -c release
+
+      # Ad hoc signing only: notarization needs a Developer ID, which a pull request from a fork must
+      # never have access to.
+      - name: Package the app and DMG
+        run: ./Scripts/package.sh --no-build --version "0.1.0-${{ github.sha }}"
+
+      # The DMG is the artifact a user gets, so the check that matters is that it mounts and the app
+      # inside it starts — not that the app path in the workspace starts.
+      - name: Launch from the mounted DMG
+        run: |
+          set -uo pipefail
+          DMG="$(ls ./.build/package/Ava-*.dmg)"
+          MOUNT="$(mktemp -d)"
+          hdiutil attach -quiet -nobrowse -mountpoint "${MOUNT}" "${DMG}"
+          trap 'hdiutil detach -quiet "${MOUNT}" 2>/dev/null' EXIT
+
+          codesign --verify --strict "${MOUNT}/Ava.app"
+
+          # A GUI app cannot take focus in CI, so assert on what the engine does: the bundle loads
+          # (no dyld failure) and the helper processes come up from inside the image.
+          "${MOUNT}/Ava.app/Contents/MacOS/Ava" & APP_PID=$!
+          for _ in $(seq 1 30); do
+            pgrep -f "${MOUNT}/Ava.app/Contents/MacOS/WebContent" > /dev/null && break
+            kill -0 "${APP_PID}" 2>/dev/null || { echo "app exited during startup"; exit 1; }
+            sleep 1
+          done
+          if ! pgrep -f "${MOUNT}/Ava.app/Contents/MacOS/WebContent" > /dev/null; then
+            echo "WebContent never started from the bundle"
+            exit 1
+          fi
+          echo "helpers running from the mounted image"
+          pkill -f "${MOUNT}/Ava.app" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ava-dmg
+          path: .build/package/Ava-*.dmg
+          retention-days: 14
+
+      # CI checks source compilation, boundaries and packaging. Run swift test locally after building
+      # the engine; native probes also need an interactive desktop.

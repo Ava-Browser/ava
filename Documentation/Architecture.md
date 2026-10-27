@@ -78,8 +78,11 @@ See `Rules.md` R5 for the invariant, and `Documentation/Decisions/` for the reas
 This section records the original spike's limits, not the current feature inventory.
 See the [README](../README.md) for today's status. Each gap was product work with a defined shape.
 
-- **Packaging.** Helper process placement, bundle-relative resource root, codesigning entitlements
-  for Mach-port helper spawn, signing the shim. Nothing here has been tested as a signed `.app`.
+- **Packaging.** Addressed by `Scripts/package.sh`: helpers in `Contents/MacOS`, the resource root at
+  `Contents/Resources`, dylibs in `Contents/lib` with `@loader_path` rpaths, and every image signed
+  inside out with the hardened runtime. Verified by launching `Ava.app` from a mounted DMG — 64 of its
+  dylibs resolved from the bundle and nothing from the build tree. Still open: notarization and a
+  Developer ID; the script's default ad hoc signature only runs on the machine that built it.
 - **Multi-tab.** Only one tab was ever created in the spike; teardown ordering is constrained by it.
 - **Idle CPU.** The 2 ms pump is ~500 wakeups/sec forever. Replace with a `CFRunLoopSource`
   signalled from the event loop's wake pipe, clamped to the nearest timer deadline.
