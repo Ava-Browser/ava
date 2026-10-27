@@ -8,9 +8,11 @@
 
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import LadybirdEngine
+@testable import LadybirdUI
 
 @Suite("Launch activation")
 @MainActor
@@ -30,6 +32,15 @@ struct LaunchActivationTests {
         let view = LaunchActivationNSView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         #expect(!window.isVisible)
         window.contentView?.addSubview(view)
+        #expect(window.isVisible)
+    }
+
+    @Test("Hosting BrowserWindow in a window triggers launch activation")
+    func browserWindowActivationIntegration() {
+        let window = window()
+        let hosting = NSHostingView(rootView: BrowserWindow())
+        #expect(!window.isVisible)
+        window.contentView = hosting
         #expect(window.isVisible)
     }
 

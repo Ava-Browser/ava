@@ -18,13 +18,15 @@ command -v create-dmg >/dev/null || { echo "error: create-dmg is required" >&2; 
 codesign --verify --deep --strict "${APP}"
 
 out_dir="$(dirname "${OUTPUT}")"
-# create-dmg deletes an existing output before building; build at a sibling temporary path instead so a failed run
-# leaves the previous disk image intact.
-staged="${out_dir}/.$(basename "${OUTPUT}").partial.dmg"
+mkdir -p "${out_dir}"
+# create-dmg deletes an existing output before building; stage inside a unique sibling directory on the same filesystem
+# so a failed or concurrent run leaves previous/other disk images intact and atomically renames on completion.
+staged_dir="$(mktemp -d "${out_dir}/.ava-dmg-stage.XXXXXX")"
+staged="${staged_dir}/$(basename "${OUTPUT}")"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/ava-dmg.XXXXXX")"
-trap 'rm -rf "${work}" "${staged}"' EXIT HUP INT TERM
-mkdir -p "${work}/staging" "${out_dir}"
+trap 'rm -rf "${work}" "${staged_dir}"' EXIT HUP INT TERM
+mkdir -p "${work}/staging"
 ditto "${APP}" "${work}/staging/Ava.app"
 
 create-dmg \
