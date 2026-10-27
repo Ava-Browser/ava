@@ -66,7 +66,10 @@ jobs:
       - name: Point the package at the prebuilt engine
         env:
           ENGINE_BUILD_DIR: ${{ vars.AVA_ENGINE_BUILD_DIR }}
-        run: ln -sfn "${ENGINE_BUILD_DIR}" Extern/ladybird/Build/release
+        # The fork gitignores Build*/, so a fresh checkout has no Extern/ladybird/Build to link inside.
+        run: |
+          mkdir -p Extern/ladybird/Build
+          ln -sfn "${ENGINE_BUILD_DIR}" Extern/ladybird/Build/release
 
       # --no-build skips the engine/shim build only; the Swift app still has to be compiled, and it
       # links against the prebuilt shim above.
@@ -76,7 +79,13 @@ jobs:
       # Ad hoc signing only: notarization needs a Developer ID, which a pull request from a fork must
       # never have access to.
       - name: Package the app and DMG
-        run: ./Scripts/package.sh --no-build --version "0.1.0-${{ github.sha }}"
+        # CFBundleVersion must be period-separated integers; a "-<sha>" suffix is not a valid bundle
+        # version. The SHA identifies the artifact instead.
+        run: ./Scripts/package.sh --no-build --version "0.1.0"
+
+      - name: Keep the commit in the artifact name
+        run: |
+          mv "$(ls ./.build/package/Ava-*.dmg)" "./.build/package/Ava-0.1.0-${GITHUB_SHA::7}.dmg"
 
       # The DMG is the artifact a user gets, so the check that matters is that it mounts and the app
       # inside it starts — not that the app path in the workspace starts.
@@ -85,8 +94,15 @@ jobs:
           set -uo pipefail
           DMG="$(ls ./.build/package/Ava-*.dmg)"
           MOUNT="$(mktemp -d)"
+          # One cleanup for every exit path: a failed startup check must not leave the app running or
+          # the image mounted on a self-hosted runner (AVA_ENGINE_RUNNER can point at one).
+          cleanup() {
+            pkill -f "${MOUNT}/Ava.app" 2>/dev/null || true
+            hdiutil detach -quiet "${MOUNT}" 2>/dev/null || true
+            rm -rf "${MOUNT}"
+          }
+          trap cleanup EXIT
           hdiutil attach -quiet -nobrowse -mountpoint "${MOUNT}" "${DMG}"
-          trap 'hdiutil detach -quiet "${MOUNT}" 2>/dev/null' EXIT
 
           codesign --verify --strict "${MOUNT}/Ava.app"
 
@@ -103,7 +119,6 @@ jobs:
             exit 1
           fi
           echo "helpers running from the mounted image"
-          pkill -f "${MOUNT}/Ava.app" || true
 
       - uses: actions/upload-artifact@v4
         with:

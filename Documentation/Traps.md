@@ -163,9 +163,20 @@ real helpers, real `@rpath` install names — and asserts the closure is complet
 survives, the entitlements land where they belong, and the executables actually load. It also has a
 negative case: an unsatisfiable dependency must fail the build. CI runs it on every push and PR.*
 
-The `package` CI job (real engine, real DMG, launched from the mounted image) only runs when the
-repository variable `AVA_ENGINE_BUILD_DIR` points at a prebuilt engine. It is skipped otherwise rather
-than faked: a fabricated green there would claim a bundle nobody built.
+That test covers assembly and signing. It passes `--no-build`, so it never executes `Scripts/build.sh`
+and the `LbCallbacks` breakage remains hand-verified only — do not describe it as covered. The `package`
+CI job (real engine, real DMG, launched from the mounted image) does run the full path, but only when
+the repository variable `AVA_ENGINE_BUILD_DIR` points at a prebuilt engine. It is skipped otherwise
+rather than faked: a fabricated green there would claim a bundle nobody built.
+
+**A self-containment guard that greps for one literal prefix does not guard anything here.**
+The build tree is normally a *symlink* to a second checkout, so a stale rpath in the bundle reads
+`.../browsers/ladybird/Build/release/lib` — no `/ava/Extern/ladybird/Build` in it. A check written as
+`grep -q "${FORK}/Build"` passes a bundle that still points at the build tree, which is exactly the
+dylib-mismatch the whole relocation step exists to prevent. *Fix: enumerate every `LC_RPATH` and fail
+on anything that is not `@`-relative or `/usr/lib/swift`; never pattern-match one absolute prefix.*
+Related: `otool -l | grep -q` can exit early and, under `pipefail`, report failure via SIGPIPE — a
+second way for the same guard to silently disable itself. Read the load commands before matching.
 
 **Test mode is a layout-test switch, and it overrides font matching.**
 `FontPlugin::generic_font_name()` returns `SerenitySans` for every generic family when

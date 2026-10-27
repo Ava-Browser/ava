@@ -68,7 +68,7 @@ bash ./Scripts/test-package.sh    # packaging, against a synthetic engine tree
 
 The layer guard works with macOS's bundled Bash. GitHub Actions compiles the application and test targets, checks layer boundaries, and runs the packaging test; it does not link the engine or execute tests.
 
-CI does not build the engine — that is a multi-hour vcpkg and Qt build. So `test-package.sh` exercises the real `Scripts/package.sh` against a synthetic engine tree and asserts what packaging actually promises: a complete dependency closure, no absolute build-tree paths, correct entitlements, and executables that load. It reproduces both packaging failures that reached `main`. A separate `package` job builds and launches a real DMG, and runs only when the repository variable `AVA_ENGINE_BUILD_DIR` names a prebuilt engine; it is skipped rather than faked when there is none.
+CI does not build the engine — that is a multi-hour vcpkg and Qt build. So `test-package.sh` exercises the real `Scripts/package.sh` against a synthetic engine tree and asserts what packaging actually promises: a complete dependency closure, no absolute build-tree paths, correct entitlements, and executables that load. It covers assembly and signing only; it passes `--no-build`, so it does not execute `Scripts/build.sh` and would not catch a failure there. A separate `package` job builds and launches a real DMG, and runs only when the repository variable `AVA_ENGINE_BUILD_DIR` names a prebuilt engine; it is skipped rather than faked when there is none.
 
 The layer check validates architectural boundaries and the allowed changes to the engine fork. Native engine probes live under `Extern/ladybird/Tests/LibWebView/TestNative*`; some open windows and require an interactive desktop session.
 

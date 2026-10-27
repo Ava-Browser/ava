@@ -117,7 +117,10 @@ relocate() {
     while read -r rpath; do
         case "${rpath}" in
             @*|/usr/lib/swift) continue ;;
-            *) install_name_tool -delete_rpath "${rpath}" "${image}" 2>/dev/null || true ;;
+            # Fail loudly: a delete that does not take leaves a path into the build tree, and dyld would
+            # prefer it over ours. The post-assembly check below reports it too, but not why.
+            *) install_name_tool -delete_rpath "${rpath}" "${image}" \
+                   || die "could not remove rpath ${rpath} from $(basename "${image}")" ;;
         esac
     done < <(otool -l "${image}" | awk '/LC_RPATH/ { getline; getline; print $2 }')
 }
@@ -233,9 +236,16 @@ for image in "${APP}/Contents/MacOS/Ava" "${APP}/Contents/MacOS/"* "${LIBS}"/*.d
             *) missing+=("${dep} (absolute, from $(basename "${image}"))") ;;
         esac
     done < <(otool -L "${image}" | tail -n +2 | awk '{print $1}')
-    if otool -l "${image}" | grep -q "${FORK}/Build" ; then
-        missing+=("stale build-tree rpath in $(basename "${image}")")
-    fi
+    # Check every LC_RPATH by value, not by grepping for one literal prefix. The build tree is usually a
+    # symlink to a *second* checkout, so a stale rpath reads .../browsers/ladybird/Build/... and an
+    # ava-relative pattern misses it entirely. Read the load commands once, too: `otool -l | grep -q`
+    # exits early and can report failure via SIGPIPE under pipefail, turning this guard off silently.
+    while read -r rpath; do
+        case "${rpath}" in
+            @*|/usr/lib/swift) ;;
+            *) missing+=("non-bundle rpath ${rpath} in $(basename "${image}")") ;;
+        esac
+    done < <(otool -l "${image}" | awk '/LC_RPATH/ { getline; getline; print $2 }')
 done
 [[ ${#missing[@]} -eq 0 ]] || die "bundle is not self-contained: ${missing[*]}"
 
