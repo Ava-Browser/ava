@@ -79,7 +79,7 @@ Signed inside out, never `--deep`, with the hardened runtime:
 | `WebContent`, `WebWorker` | yes | yes |
 | other helpers | no | yes |
 | `Ava` | no | yes |
-| `Contents/lib/*.dylib` | no | yes |
+| `Contents/lib/*.dylib` | no | not applicable — dylibs are signed without an entitlement plist |
 
 `allow-jit` only on the two renderers, because the kernel refuses W+X memory in a runtime process and
 only they JIT. `disable-library-validation` everywhere because ad hoc images without a team identifier
@@ -103,8 +103,10 @@ Verified:
 
 Not verified:
 
-- **Notarization.** The default signature is ad hoc and runs only on the machine that built it.
-  Gatekeeper rejects it elsewhere. To ship:
+- **Notarization.** The default signature is ad hoc, which is intended for local use: the app runs
+  where it was built (no quarantine attribute) but is rejected by `spctl` and is not suitable for
+  distribution. A downloaded copy would be refused by Gatekeeper. Shipping needs a Developer ID and
+  notarization:
   ```bash
   ./Scripts/package.sh --identity "Developer ID Application: ..."
   xcrun notarytool submit Ava-0.1.0.dmg --keychain-profile <profile> --wait

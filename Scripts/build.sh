@@ -71,19 +71,25 @@ else
     built_home="<unknown; no CMakeCache in ${BUILD_TREE}>"
 fi
 
-if [[ "${1:-}" != "--swift-only" ]]; then
-    if [[ ! -d "${BUILD_DIR}" ]]; then
-        echo "error: no build directory at ${BUILD_DIR}" >&2
-        echo "       build the fork first: cd Extern/ladybird && ./Meta/ladybird.py build --build-dir Build/release" >&2
-        exit 1
-    fi
-    cmake --build "${BUILD_DIR}" --target LibPort
-    # Record the commit of the tree CMake just read, so the stamp describes the dylib.
-    built_home="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_TREE}/CMakeCache.txt" 2>/dev/null | head -1)"
-    built_sha="$(git -C "${built_home:-${FORK}}" rev-parse HEAD 2>/dev/null || echo unknown)"
-    printf '%s\n' "${built_sha}" > "${PIN_STAMP}"
+SWIFT_ONLY=0
+[[ "${1:-}" == "--swift-only" ]] && SWIFT_ONLY=1
+
+# Two "unknown" commits compare equal, which would pass the check below on no evidence at all. A
+# checkout that cannot name its commit is not a checkout this can vouch for.
+if [[ "${pin_now}" == "unknown" ]]; then
+    echo "error: cannot read the pinned commit from ${FORK}" >&2
+    echo "       the submodule is probably uninitialized: git submodule update --init" >&2
+    exit 1
+fi
+if [[ -z "${built_sha}" || "${built_sha}" == "unknown" || "${built_sha}" == "none" ]]; then
+    echo "error: cannot establish which engine commit the shim was built from." >&2
+    echo "       build tree: ${built_home}" >&2
+    echo "       Rebuild it so provenance is recorded: ./Scripts/build.sh" >&2
+    exit 1
 fi
 
+# Refuse a tree that is already known to be wrong *before* compiling it. A large jump under Libraries/
+# is hours, and building it only to reject the result wastes all of them.
 if [[ "${built_sha}" != "${pin_now}" ]]; then
     cat >&2 <<MSG
 error: the LibPort shim would be built from a different engine commit than the pin.
@@ -107,9 +113,56 @@ repo's branch, which may be unrelated work):
 
     cd "${built_home}" && ./Meta/ladybird.py build --build-dir Build/release
 
-Or, deliberately, repin this repo to what that tree actually is:
+Or, deliberately, accept that tree as the pin instead (this moves the pin *backwards* to the commit
+that tree is at, so only do it if that is really what you want):
 
-    git -C . checkout ${built_sha} && git add Extern/ladybird && git commit
+    git -C "${FORK}" checkout --detach ${built_sha}
+    git add Extern/ladybird && git commit -m "Extern/ladybird: Repin to ${built_sha}"
+MSG
+    exit 1
+fi
+
+if [[ ${SWIFT_ONLY} -eq 0 ]]; then
+    if [[ ! -d "${BUILD_DIR}" ]]; then
+        echo "error: no build directory at ${BUILD_DIR}" >&2
+        echo "       build the fork first: cd Extern/ladybird && ./Meta/ladybird.py build --build-dir Build/release" >&2
+        exit 1
+    fi
+    cmake --build "${BUILD_DIR}" --target LibPort
+    # Record the commit of the tree CMake just read, so the stamp describes the dylib.
+    built_home="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_TREE}/CMakeCache.txt" 2>/dev/null | head -1)"
+    built_sha="$(git -C "${built_home:-${FORK}}" rev-parse HEAD 2>/dev/null || echo unknown)"
+    printf '%s\n' "${built_sha}" > "${PIN_STAMP}"
+
+    # The checkout can move while a long build runs (an editor, a sync, another worktree). Re-check
+    # what was actually produced rather than trusting the tree we looked at beforehand.
+    if [[ "${built_sha}" != "${pin_now}" ]]; then
+        cat >&2 <<MSG
+error: the engine checkout moved during the build.
+
+    pinned submodule:   ${pin_now}
+    built from:         ${built_sha}
+    build tree:         ${built_home}
+
+The shim on disk does not match the pin, so linking it would read the wrong LbCallbacks offsets.
+Re-run ./Scripts/build.sh once the checkout is stable at ${pin_now}.
+MSG
+        exit 1
+    fi
+elif [[ -f "${PIN_STAMP}" && "$(cat "${PIN_STAMP}")" != "${pin_now}" ]]; then
+    # --swift-only links the dylib already on disk, which may predate the checkout moving to the pin:
+    # the tree HEAD can be correct while the built shim is not. The stamp is the only record of what
+    # that dylib was actually compiled from, so it must agree with the pin.
+    cat >&2 <<MSG
+error: --swift-only would link a shim built before the checkout moved to the pin.
+
+    pinned submodule:  ${pin_now}
+    shim built from:   $(cat "${PIN_STAMP}")
+
+The sources now match the pin, but liblagom-port.dylib was compiled from the other commit, so its
+LbCallbacks layout is not the one the Swift side compiled against. Rebuild the shim:
+
+    ./Scripts/build.sh
 MSG
     exit 1
 fi

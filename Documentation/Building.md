@@ -125,7 +125,7 @@ Self-contained `.app` plus a DMG. Details, including what is *not* verified, are
 ```bash
 git -C Extern/ladybird fetch origin ava-port
 git -C Extern/ladybird checkout --detach <new-sha>
-cd .. && git add Extern/ladybird && git commit   # advance the pin deliberately
+git add Extern/ladybird && git commit            # advance the pin deliberately
 ./Scripts/build.sh
 ```
 

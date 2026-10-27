@@ -23,8 +23,11 @@ hand-written C interface. Everything below follows from that sentence.
 ```
 
 The fork is **a dependency you happen to control**, not a workspace. It is pinned as a submodule and
-the pin advances deliberately, never incidentally. Changing `Extern/ladybird/Libraries/LibPort/` is
-allowed; changing anything else there is rebase debt (rule R7).
+the pin advances deliberately, never incidentally.
+
+Changes are allowed only in `Extern/ladybird/Libraries/LibPort/`, `Tests/LibWebView/TestNative*`, and
+the two CMake lines that register them. Anything else in the fork is rebase debt that compounds on
+every upstream sync (rule R7, enforced by `check-layers.sh` against the upstream merge-base).
 
 ## Layers, top to bottom
 
@@ -72,8 +75,8 @@ there is exactly one thread.
  user clicks in the window
         │
         ▼
- ① PortWebView (Engine)              NSView receives the event, converts to CSS pixels,
-        │                            divides by its own isFlipped/backing scale
+ ① PortWebView (Engine)              NSView receives the event and converts it to view-local
+        │                            CSS pixels. The shim applies the backing scale.
         ▼
  ② LadybirdBridge                     LbTabSendMouse(app, tab, x, y, button, clickCount)
         │
