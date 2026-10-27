@@ -48,11 +48,28 @@ fi
 # host against the older dylib is an immediate startup SIGSEGV, and `swift build` cannot see it: it only
 # links a symbol, and the field offsets are baked into the Swift side at compile time.
 #
-# So the dylib records which commit produced it, and a mismatch stops the build rather than shipping
-# the crash. The stamp lives beside the dylib because that is what the recorded commit describes.
+# So the built shim is checked against the pin, and a mismatch stops the build rather than shipping the
+# crash.
+#
+# The check must read the commit CMake actually compiles, not what a previous run intended to build.
+# Build/release is usually a symlink to a second checkout, reused instead of rebuilt for hours, so
+# `cmake --build` can read sources from a tree that is not $FORK at all. A stamp written from `pin_now`
+# therefore records a wish: measured, the stamp said 4b042dd while the dylib had been compiled from a
+# checkout 737 commits behind, and this guard passed while every LbCallbacks slot was misaligned.
+# CMakeCache.txt names the real source tree, so that is the authority.
+BUILD_TREE="${FORK}/Build/release"
 PIN_STAMP="${BUILD_DIR}/lib/.libport-pin"
 pin_now="$(git -C "${FORK}" rev-parse HEAD 2>/dev/null || echo unknown)"
-pin_built="$(cat "${PIN_STAMP}" 2>/dev/null || echo none)"
+
+# The checkout CMake compiles from, and its commit. Falls back to the stamp only when there is no
+# cache to read, which is the one case where the stamp is the best available evidence.
+built_home="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_TREE}/CMakeCache.txt" 2>/dev/null | head -1)"
+if [[ -n "${built_home}" ]]; then
+    built_sha="$(git -C "${built_home}" rev-parse HEAD 2>/dev/null || echo unknown)"
+else
+    built_sha="$(cat "${PIN_STAMP}" 2>/dev/null || echo none)"
+    built_home="<unknown; no CMakeCache in ${BUILD_TREE}>"
+fi
 
 if [[ "${1:-}" != "--swift-only" ]]; then
     if [[ ! -d "${BUILD_DIR}" ]]; then
@@ -61,27 +78,47 @@ if [[ "${1:-}" != "--swift-only" ]]; then
         exit 1
     fi
     cmake --build "${BUILD_DIR}" --target LibPort
-    printf '%s\n' "${pin_now}" > "${PIN_STAMP}"
-    pin_built="${pin_now}"
+    # Record the commit of the tree CMake just read, so the stamp describes the dylib.
+    built_home="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_TREE}/CMakeCache.txt" 2>/dev/null | head -1)"
+    built_sha="$(git -C "${built_home:-${FORK}}" rev-parse HEAD 2>/dev/null || echo unknown)"
+    printf '%s\n' "${built_sha}" > "${PIN_STAMP}"
 fi
 
-if [[ "${pin_built}" != "${pin_now}" ]]; then
+if [[ "${built_sha}" != "${pin_now}" ]]; then
     cat >&2 <<MSG
-error: the LibPort shim does not match the pinned engine commit.
+error: the LibPort shim would be built from a different engine commit than the pin.
 
-    pinned submodule: ${pin_now}
-    built from:       ${pin_built}
+    pinned submodule:    ${pin_now}
+    build tree sources:  ${built_sha}
+    build tree checkout: ${built_home}
 
-The shim's C structs (LbCallbacks) changed between those commits. The Swift side is compiled against
-the pinned header, so running it against this dylib reads the wrong field offsets and crashes at
-startup. Rebuild the shim:
+The shim's C structs (LbCallbacks) differ between those commits, and the offsets are positional. The
+Swift side is compiled against the pinned header, so a dylib from the other tree makes every callback
+read the wrong slot: field 4 is on_title_change in the pin but on_request_alert in an older tree. That
+is a silent misalignment, not a missing feature, and it does not always crash.
 
-    ./Scripts/build.sh
+Point the build tree at the pin (detached is normal for a submodule pin; do not switch to this
+repo's branch, which may be unrelated work):
 
-If the build tree is a symlink to another checkout, that checkout must also be at ${pin_now} —
-otherwise cmake rebuilds from the other checkout's sources and stamps a commit it did not build.
+    git -C "${built_home}" fetch origin ava-port
+    git -C "${built_home}" checkout --detach ${pin_now}
+
+...then rebuild (a large jump under Libraries/ is hours, not minutes):
+
+    cd "${built_home}" && ./Meta/ladybird.py build --build-dir Build/release
+
+Or, deliberately, repin this repo to what that tree actually is:
+
+    git -C . checkout ${built_sha} && git add Extern/ladybird && git commit
 MSG
     exit 1
+fi
+
+# The build tree being a separate checkout is legitimate (a multi-GB, hours-long build is worth
+# sharing) but it is also how the above happens, so say it out loud rather than failing silently later.
+fork_real="$(cd "${FORK}" && pwd -P)"
+if [[ -n "${built_home}" && "${built_home}" != "${fork_real}" ]]; then
+    echo "note: building from a separate checkout at ${built_home} (same commit as the pin)."
 fi
 
 # `swift build` cannot warn about this itself: it only links the dylib when a Swift file references a
