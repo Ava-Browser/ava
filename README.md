@@ -74,12 +74,19 @@ The layer check validates architectural boundaries and the allowed changes to th
 
 ## Project documentation
 
-- [Architecture](Documentation/Architecture.md) — modules and the engine boundary
-- [Contract rules](Documentation/Rules.md) — threading, presentation, and layer constraints
-- [Spaces design](Documentation/TDD-Spaces.md) — persistent organization and planned container support
-- [Settings requirements](Documentation/PRD-Settings.md) — scope of native preferences
-- [Development notes](Documentation/Traps.md) — known pitfalls and lessons from testing
-- [Agent instructions](AGENTS.md) — operating rules for coding agents
+New to the codebase? Start with the three pages below, in order — they take about twenty minutes.
+The full index is in **[Documentation](Documentation/README.md)**.
+
+| | Page | What it answers |
+|---|---|---|
+| 1 | [Architecture at a glance](Documentation/Architecture-Overview.md) | What the pieces are, and how a click becomes pixels |
+| 2 | [The ABI boundary](Documentation/ABI.md) | How Swift and C++ talk, and why it is hand-written C |
+| 3 | [Building](Documentation/Building.md) | How to get a running app, and what each script does |
+
+Then, as you need them: [contract rules](Documentation/Rules.md) (the enforced invariants),
+[measured traps](Documentation/Traps.md) (things that cost people hours), and
+[packaging](Documentation/Packaging.md). [Agent instructions](AGENTS.md) cover operating rules for
+coding agents.
 
 ## Contributing and security
 
