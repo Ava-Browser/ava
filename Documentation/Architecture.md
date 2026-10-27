@@ -102,3 +102,8 @@ See the [README](../README.md) for today's status. Each gap was product work wit
 configured in [`.gitmodules`](../.gitmodules). The port and native probes live on its
 `ava-port` branch. Clone recursively; a normal submodule checkout is detached at the
 recorded commit. Advance that pin deliberately, separately from unrelated app changes.
+
+When that advance is a **resync from Ladybird upstream**, follow
+[Upstream sync review](Upstream-Sync-Review.md). A sync moves hundreds of commits underneath the C ABI
+and the presentation gate, and no automated check in this repo covers either — `build.sh` refuses a
+mismatched dylib, but it cannot tell you the `current_frame()` gate has drifted from Qt's.

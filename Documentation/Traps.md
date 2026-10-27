@@ -102,6 +102,20 @@ dependency is real. Verify with `otool -L`.
 **The fork builds for macOS 14.4** (`CMAKE_OSX_DEPLOYMENT_TARGET`). A package targeting `.v14`
 links with a "built for newer version" warning. *Fix: `platforms: [.macOS("14.4")]`.
 
+**A hybrid compile against another checkout's generated headers invents upstream breakage.**
+Reusing a shared build tree's compile command but pointing `-I` at a different fork checkout mixes
+that tree's *stale generated* IPC headers with the new sources. The result is a wall of
+`no type named 'ConnectToStorageAreaResponse'`, `marked 'override' but does not override`, and
+`abstract class is marked 'final'` — none of it real. *Fix: never report those as sync findings, and
+do not read their absence as a pass. Only a real build of the tree in question proves anything.*
+
+**A sync can delete the symbol our presentation gate mirrors, and nothing notices.**
+`PortWebView::current_frame()` is a *copy* of Qt's `current_paintable()` logic, not a call to it, so
+upstream removing or reshaping that function produces no compile error here. Measured: the
+`7e61093` → `4b042dd` sync dropped `WebContentView::current_paintable` from the header surface while
+our copy stayed correct — luck, not a guarantee. *Fix: after every sync, diff our gate against
+`UI/Qt/WebContentView.cpp` by hand. See [Upstream sync review](Upstream-Sync-Review.md).*
+
 ## Verified non-issues
 
 **Pump-during-live-drag is safe.** The freeze-during-gesture bug is real — a default-mode timer
