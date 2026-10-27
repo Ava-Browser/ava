@@ -88,6 +88,24 @@ struct WorkspacePersistenceTests {
         #expect(restored.tabs(in: .normal).map(\.id) == [selected.id])
     }
 
+    @Test("An engine-created target-blank view is adopted instead of replaced")
+    func engineCreatedTabIsAdopted() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+
+        let manager = WorkspaceManager(store: store)
+        _ = manager.createWorkspace(name: "Only")
+        _ = try #require(manager.createTab(url: "https://search.example"))
+
+        let model = BrowserModel(store: store)
+        let parent = try #require(model.selectedTab)
+        let child = try #require(model.adoptEngineTab(parent: parent, engineID: 42, activate: true))
+
+        #expect(child.engineID == 42)
+        #expect(model.selectedTab?.id == child.id)
+        #expect(model.tabs.count == 2)
+    }
+
     @Test("Restored descriptors start unloaded until selected with an engine")
     func restoredTabsAreLazy() throws {
         let store = temporaryStore()
@@ -274,6 +292,13 @@ import AppKit
 @MainActor
 @Suite("Hover and key translation")
 struct HoverAndKeyTranslationTests {
+    @Test("Mouse modifier flags use the engine key-modifier mask")
+    func mouseModifiers() {
+        let modifiers = PortWebView.engineModifiers(from: [.command, .shift, .option, .control])
+        #expect(modifiers == PortKey.modSuper | PortKey.modShift | PortKey.modAlt | PortKey.modCtrl)
+        #expect(PortWebView.engineModifiers(from: []) == 0)
+    }
+
     @Test("A hand cursor maps to the pointing hand")
     func handCursor() {
         #expect(PortWebView.cursor(for: PortStandardCursor.hand) == .pointingHand)

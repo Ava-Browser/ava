@@ -41,6 +41,26 @@ struct InputResolutionTests {
     }
 }
 
+@Suite("Select dropdown decoding")
+struct SelectDropdownDecodingTests {
+    @Test("Options, separators, and groups preserve engine ids")
+    func items() {
+        let json = #"[{"type":"option","id":1,"label":"Bing","enabled":true,"selected":true},{"type":"separator"},{"type":"group","label":"More","items":[{"type":"option","id":2,"label":"DuckDuckGo","enabled":false,"selected":false}]}]"#
+        let decoded = json.withCString { decodeSelectItems($0, json.utf8.count) }
+        #expect(decoded == [
+            .option(PortSelectOption(id: 1, label: "Bing", enabled: true, selected: true)),
+            .separator,
+            .group(label: "More", options: [PortSelectOption(id: 2, label: "DuckDuckGo", enabled: false, selected: false)]),
+        ])
+    }
+
+    @Test("Malformed payload is rejected")
+    func malformed() {
+        let json = #"[{"type":"option","label":"missing id","enabled":true}]"#
+        #expect(json.withCString { decodeSelectItems($0, json.utf8.count) } == nil)
+    }
+}
+
 @Suite("Surface ref conversion")
 struct SurfaceRefTests {
     /// The one place a bare `void*` becomes a CF type (S1). Round-trips a real IOSurface so the cast is exercised
