@@ -63,6 +63,21 @@ The build guard supports macOS `/bin/bash` 3.2. When reusing an engine build fro
 checkout, compare source bytes and report provenance warnings.
 Never repoint copied submodule `.git` metadata. Do not write shared CMake/generated/lib
 outputs from a different worktree. Check available disk space before cold engine builds.
+
+Setting up a worktree means initializing its own submodule clone — `git worktree add` records the
+pin but leaves `Extern/ladybird/` empty (`Documentation/Traps.md`):
+
+    git worktree add ../<name> -b <branch>
+    cd ../<name>
+    git -c protocol.file.allow=always submodule update --init Extern/ladybird
+    git submodule status                      # no leading '-' means it is populated
+    git -C Extern/ladybird rev-parse --show-toplevel   # must print THIS worktree
+    ./Scripts/check-layers.sh
+
+To work on the fork too, `git -C Extern/ladybird checkout ava-port` — a detached pin will not build
+the fork's branch changes. Then cold-build `Extern/ladybird/Build/release`; history is hardlinked
+across worktrees, the build tree is not.
+
 Isolated temporary shim/probe output
 may reuse audited cached dependencies read-only, but record exact commands and prove the
 new shim is the one loaded. Never claim a dry-run built/tested the code.

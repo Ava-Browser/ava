@@ -54,6 +54,7 @@ Point-in-time findings. Useful as evidence; not maintained as current truth:
 - [Safari header, first pass](Reports/SafariHeader-FirstPass.md)
 - [Manual unload readiness](Reports/ManualUnload-Readiness.md)
 - [Space settings, first pass](Reports/SpaceSettings-FirstPass.md)
+- [Bridge gap inventory](Reports/Bridge-Gap-Inventory.md)
 
 ## Conventions
 
