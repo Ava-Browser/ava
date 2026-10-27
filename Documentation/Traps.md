@@ -75,6 +75,18 @@ from somewhere else entirely. Measured state at the time of writing: submodule p
 compares the build tree's `CMAKE_HOME_DIRECTORY` against the checkout it audits, fails if the
 sources differ, and warns if they merely happen to agree.*
 
+**A build stamp records an intention, not a build.**
+`build.sh` used to write the *pinned* commit into `.libport-pin` and then compare the pin against that
+stamp — so it verified a number it had just written, and passed whenever the two matched, regardless of
+what `cmake --build` actually read. Measured: the stamp said `4b042dd` while the dylib had been compiled
+from a checkout 737 commits behind at `de81058a39b`. `LbCallbacks` is positional, so every field from 4
+up was read from the wrong slot — `on_title_change` invoked as `on_request_alert` — and because several
+of those signatures coincide the app ran, with titles wired to the wrong handler and favicons silently
+dead. The symptom presented as "a merged feature is missing from the build", and the pin was correct the
+whole time. *Fix: compare the pin against the `CMAKE_HOME_DIRECTORY` checkout's HEAD, stamp the commit
+that was actually built, and print a `note:` when a separate checkout is in use rather than passing
+quietly.* Only `check-layers.sh` caught this before; now both do.
+
 **A stale remote-tracking ref will make you doubt a real push.**
 `git cat-file -t <sha>` against a submodule fails until `git fetch` — the ref is local and stale,
 the object genuinely absent. *Fix: fetch before concluding a push did not happen.*
