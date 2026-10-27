@@ -38,7 +38,7 @@ public struct BrowserWindow: View {
         return nil
     }
 
-    private static var launchURL: String { launchURLArgument ?? "https://example.com" }
+    private static var launchURL: String { launchURLArgument ?? AppSettings.shared.newTabURL }
 
     public var body: some View {
         // One workspace: the sidebar is the only tab list, and the page sits beside it.
@@ -114,7 +114,9 @@ public struct BrowserWindow: View {
             }
             .onChange(of: model.focusAddressRequested) { _, requested in
                 if requested {
-                    addressState.beginEditing()
+                    if !isShowingStartPage {
+                        addressState.beginEditing()
+                    }
                     model.focusAddressRequested = false
                 }
             }
@@ -197,8 +199,14 @@ public struct BrowserWindow: View {
                 Text(failure)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if isShowingStartPage {
+            StartPageView(model: model)
         } else {
             WebContentView(webView: model.webView)
         }
+    }
+
+    private var isShowingStartPage: Bool {
+        model.currentURL.isEmpty || model.currentURL == AppSettings.blankPageURL
     }
 }

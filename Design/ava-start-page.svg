@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: BSD-2-Clause -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">Ava — a calm start</title>
+  <desc id="desc">A static new-tab page concept. A small charcoal Lift mark sits above one wide search field on a warm ivory canvas. No extra controls or text.</desc>
+  <rect width="1440" height="900" fill="#F3F1EB"/>
+  <svg x="688" y="250" width="64" height="64" viewBox="0 0 300 300">
+    <path d="M61 230 C25 203 24 150 47 108 C74 58 122 33 174 42 C225 51 258 91 258 142 C258 180 242 213 212 238 C228 197 226 164 208 137 C190 110 163 99 135 109 C108 118 98 145 102 174 C106 202 96 225 79 232 Q69 237 61 230Z" fill="#242728"/>
+  </svg>
+  <text x="720" y="349" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" font-size="24" font-weight="500" letter-spacing="-0.7" fill="#242728">ava</text>
+  <rect x="460" y="378" width="520" height="56" rx="18" fill="#FAF9F6" stroke="#DEDCD5"/>
+  <g fill="none" stroke="#73766E" stroke-width="1.7" stroke-linecap="round">
+    <circle cx="488" cy="405" r="7"/>
+    <path d="M493.3 410.3 L498 415"/>
+  </g>
+  <text x="517" y="413" font-family="-apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" font-size="17" fill="#73766E">Search or enter a URL</text>
+</svg>

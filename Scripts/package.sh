@@ -23,6 +23,7 @@ FORK="${REPO_ROOT}/Extern/ladybird"
 BUILD_DIR="${FORK}/Build/release"
 VCPKG_LIB="${BUILD_DIR}/vcpkg_installed/arm64-osx-dynamic/lib"
 OUT_DIR="${REPO_ROOT}/.build/package"
+APP_ICON="${REPO_ROOT}/Resources/app_icon.icns"
 APP="${OUT_DIR}/Ava.app"
 LIBS="${APP}/Contents/lib"
 
@@ -68,6 +69,7 @@ for helper in "${HELPERS[@]}"; do
 done
 # themes/ is not optional: LbTabCreate loads Default.ini from the resource root and returns tab id 0 without it.
 cp -R "${BUILD_DIR}/bin/Ladybird.app/Contents/Resources/." "${APP}/Contents/Resources/"
+cp "${APP_ICON}" "${APP}/Contents/Resources/app_icon.icns"
 
 # ---------------------------------------------------------------- dependency closure
 # Resolve @rpath dependencies the way dyld will: by name, from the engine's own library directories.
@@ -261,6 +263,9 @@ STAGE="${OUT_DIR}/dmg"
 mkdir -p "${STAGE}"
 cp -R "${APP}" "${STAGE}/Ava.app"
 ln -s /Applications "${STAGE}/Applications"
+cp "${APP_ICON}" "${STAGE}/.VolumeIcon.icns"
+SetFile -c icnC "${STAGE}/.VolumeIcon.icns"
+SetFile -a C "${STAGE}"
 DMG="${OUT_DIR}/Ava-${VERSION}.dmg"
 echo "==> creating ${DMG}"
 hdiutil create -quiet -volname "Ava" -srcfolder "${STAGE}" -fs APFS -format ULFO -ov "${DMG}"
