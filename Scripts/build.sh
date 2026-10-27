@@ -44,12 +44,12 @@ MSG
 fi
 
 # The shim speaks a C ABI whose struct layouts live in the pinned submodule, so a dylib built from a
-different commit is not a stale build — it is a different ABI. Widening `LbCallbacks` and running the
-host against the older dylib is an immediate startup SIGSEGV, and `swift build` cannot see it: it only
-links a symbol, and the field offsets are baked into the Swift side at compile time.
+# different commit is not a stale build — it is a different ABI. Widening `LbCallbacks` and running the
+# host against the older dylib is an immediate startup SIGSEGV, and `swift build` cannot see it: it only
+# links a symbol, and the field offsets are baked into the Swift side at compile time.
 #
 # So the dylib records which commit produced it, and a mismatch stops the build rather than shipping
-the crash. The stamp lives beside the dylib because that is what the recorded commit describes.
+# the crash. The stamp lives beside the dylib because that is what the recorded commit describes.
 PIN_STAMP="${BUILD_DIR}/lib/.libport-pin"
 pin_now="$(git -C "${FORK}" rev-parse HEAD 2>/dev/null || echo unknown)"
 pin_built="$(cat "${PIN_STAMP}" 2>/dev/null || echo none)"

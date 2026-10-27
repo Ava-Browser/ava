@@ -146,6 +146,52 @@ argument as a document-open request. The process looks alive, which sends you lo
 rendering or activation bug. *Fix: require a `--url` flag; never pass a bare URL.* This is why
 `--url` exists rather than a positional argument.
 
+**Signing the bundle after the executable silently removes its entitlements.**
+`codesign --sign ... Ava.app` re-signs `Contents/MacOS/Ava` as part of sealing the bundle, and it does
+so *without* the entitlements passed to the inner call. Sign the executable and the bundle in one step,
+passing `--entitlements` to the bundle sign. Measured: the first packaged DMG exited at once with
+`dyld: ... liblagom-port.0.dylib ... mapping process and mapped file (non-platform) have different Team
+IDs` — the shim was ad hoc signed and `disable-library-validation` was gone from the app. `codesign
+--verify --strict` passed the whole time, because it does not exercise dyld. *Fix: sign the bundle with
+the app's entitlements, and prove it by executing the binary rather than by verifying the signature.*
+
+**The engine's rpaths are absolute paths into the build tree.**
+`otool -l` on the helpers and every dylib lists the build directory itself. On a user's machine they
+dangle; on a developer's machine they *resolve* — to another checkout's dylib, which is the ABI
+mismatch `Scripts/build.sh` exists to prevent, delivered through `dyld` instead of the linker. A bundle
+can pass a dependency-completeness check and still load the wrong engine. *Fix: delete every absolute
+rpath and add `@loader_path/../lib` (binaries) or `@loader_path` (dylibs); assert no build-tree path
+survives anywhere in the bundle.*
+
+**A versioned dylib must be copied under its install name, not its real path.**
+`liblagom-core.0.dylib` is a symlink to `liblagom-core.0.1.0.dylib`, and install names name the short
+form. Copying by `realpath` produces a bundle where every dependency is present and nothing resolves.
+*Fix: `cp` the resolved file to `<Contents/lib>/<name from the install name>`.*
+
+**Packaging can break without any Swift file changing.**
+It did, twice, on `main`: an uncommented comment line in `Scripts/build.sh` (the commit adding the ABI
+pin) made the script die on `LbCallbacks: command not found`, and the signing order above shipped a DMG
+that could not start. Neither is catchable by `swift build`, and CI only compiled. *Fix:
+`Scripts/test-package.sh` runs the real `package.sh` against a synthetic engine tree — real dylib chain,
+real helpers, real `@rpath` install names — and asserts the closure is complete, no build-tree path
+survives, the entitlements land where they belong, and the executables actually load. It also has a
+negative case: an unsatisfiable dependency must fail the build. CI runs it on every push and PR.*
+
+That test covers assembly and signing. It passes `--no-build`, so it never executes `Scripts/build.sh`
+and the `LbCallbacks` breakage remains hand-verified only — do not describe it as covered. The `package`
+CI job (real engine, real DMG, launched from the mounted image) does run the full path, but only when
+the repository variable `AVA_ENGINE_BUILD_DIR` points at a prebuilt engine. It is skipped otherwise
+rather than faked: a fabricated green there would claim a bundle nobody built.
+
+**A self-containment guard that greps for one literal prefix does not guard anything here.**
+The build tree is normally a *symlink* to a second checkout, so a stale rpath in the bundle reads
+`.../browsers/ladybird/Build/release/lib` — no `/ava/Extern/ladybird/Build` in it. A check written as
+`grep -q "${FORK}/Build"` passes a bundle that still points at the build tree, which is exactly the
+dylib-mismatch the whole relocation step exists to prevent. *Fix: enumerate every `LC_RPATH` and fail
+on anything that is not `@`-relative or `/usr/lib/swift`; never pattern-match one absolute prefix.*
+Related: `otool -l | grep -q` can exit early and, under `pipefail`, report failure via SIGPIPE — a
+second way for the same guard to silently disable itself. Read the load commands before matching.
+
 **Test mode is a layout-test switch, and it overrides font matching.**
 `FontPlugin::generic_font_name()` returns `SerenitySans` for every generic family when
 `m_is_layout_test_mode` is set, skipping matching entirely. It is reached from
