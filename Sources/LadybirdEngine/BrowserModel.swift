@@ -30,6 +30,7 @@ public final class BrowserModel {
     @ObservationIgnored public let webView: PortWebView
     @ObservationIgnored private var app: PortApp?
     @ObservationIgnored private var terminationObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private var selectDropdownPresenter: SelectDropdownPresenter?
     @ObservationIgnored private let newTabURLProvider: (() -> String)?
 
     public init(
@@ -109,7 +110,38 @@ public final class BrowserModel {
             }
         }
 
-        guard let app = PortApp(callbacks: callbacks, ui: ui) else {
+        var page = PortPageCallbacks()
+        page.onNewTab = { [weak self] parentEngineID, newEngineID, activate, _ in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let parentID = self.engineToTab[parentEngineID],
+                      let parent = self.runtimeTabs[parentID]
+                else {
+                    self?.app?.destroyTab(newEngineID)
+                    return
+                }
+                self.adoptEngineTab(parent: parent, engineID: newEngineID, activate: activate)
+            }
+        }
+        page.onTabClosed = { [weak self] engineID in
+            MainActor.assumeIsolated { self?.handleEngineClosedTab(engineID) }
+        }
+
+        var picker = PortPickerCallbacks()
+        picker.onSelectDropdown = { [weak self] engineID, requestID, x, y, minimumWidth, items in
+            MainActor.assumeIsolated {
+                self?.presentSelectDropdown(
+                    engineID: engineID,
+                    requestID: requestID,
+                    x: x,
+                    y: y,
+                    minimumWidth: minimumWidth,
+                    items: items
+                )
+            }
+        }
+
+        guard let app = PortApp(callbacks: callbacks, ui: ui, page: page, picker: picker) else {
             failure = """
                 The engine could not be started.
 
@@ -152,12 +184,12 @@ public final class BrowserModel {
         webView.onViewportChange = { [weak self] width, height, scale in
             MainActor.assumeIsolated { self?.applyViewport(width: width, height: height, scale: scale) }
         }
-        webView.onMouse = { [weak self] type, x, y, button, buttons, clickCount, wheelDeltaY in
+        webView.onMouse = { [weak self] type, x, y, button, buttons, clickCount, wheelDeltaY, modifiers in
             MainActor.assumeIsolated {
                 guard let self, let app = self.app, let id = self.selectedTab?.engineID else { return }
                 app.sendMouse(
                     in: id, type: type, x: x, y: y, button: button, buttons: buttons,
-                    clickCount: clickCount, wheelDeltaY: wheelDeltaY
+                    clickCount: clickCount, wheelDeltaY: wheelDeltaY, modifiers: modifiers
                 )
             }
         }
@@ -315,6 +347,45 @@ public final class BrowserModel {
 
     // MARK: - Tabs
 
+    /// Adopts a view the engine already created for `target="_blank"` or `window.open()`.
+    /// Creating another engine tab here would strand the page that owns the requested navigation.
+    @discardableResult
+    func adoptEngineTab(parent: BrowserTab, engineID: UInt64, activate: Bool) -> BrowserTab? {
+        let workspaceID = workspaceManager.descriptor(parent.id)?.workspaceID ?? workspaceManager.activeSpaceID
+        // A popup from a background space must not steal the visible view: `select` would point the web view at a tab
+        // whose space is not on screen, while `selectedTab` kept resolving to that space's own tab.
+        let shouldActivate = activate && workspaceID == workspaceManager.activeSpaceID
+        guard let descriptor = workspaceManager.createTab(in: workspaceID, url: "about:blank", select: shouldActivate) else {
+            app?.destroyTab(engineID)
+            return nil
+        }
+        let tab = BrowserTab(descriptor: descriptor, engineID: engineID)
+        runtimeTabs[tab.id] = tab
+        engineToTab[engineID] = tab.id
+        if shouldActivate {
+            select(tab, force: true)
+        }
+        return tab
+    }
+
+    private func handleEngineClosedTab(_ engineID: UInt64) {
+        guard let tabID = engineToTab.removeValue(forKey: engineID),
+              let tab = runtimeTabs.removeValue(forKey: tabID)
+        else { return }
+        let wasSelected = tab.id == selectedTabID
+        if wasSelected { cancelSelectDropdown() }
+        workspaceManager.closeTab(tab.id)
+        guard wasSelected else { return }
+
+        if let survivor = selectedTab ?? (essentialTabs + pinnedTabs + normalTabs).first {
+            select(survivor, force: true)
+        } else {
+            webView.currentTabID = 0
+            webView.clearSurface()
+            addressText = ""
+        }
+    }
+
     @discardableResult
     public func openTab(url: String? = nil, tier: TabTier = .normal) -> BrowserTab? {
         let destination = url ?? (newTabURLProvider?() ?? AppSettings.shared.newTabURL)
@@ -342,12 +413,16 @@ public final class BrowserModel {
 
     public func select(_ tab: BrowserTab, force: Bool) {
         if !force, tab.id == selectedTabID, webView.currentTabID == tab.engineID { return }
-        if let leaving = selectedTab, leaving.id != tab.id { answerPendingDialog(on: leaving) }
+        if let leaving = selectedTab, leaving.id != tab.id {
+            answerPendingDialog(on: leaving)
+            cancelSelectDropdown()
+        }
 
         workspaceManager.selectTab(tab.id)
         let wasUnloaded = tab.engineID == nil
         guard rehydrate(tab) else { return }
         webView.currentTabID = tab.engineID ?? 0
+        if let engineID = tab.engineID { app?.setActiveTab(engineID) }
         addressText = tab.currentURL == "about:blank" ? "" : tab.currentURL
         // Reset the view's de-duplication cache: SwiftUI may have reported this exact size before the engine tab existed.
         // The viewport must reach the new tab before its first navigation, not after its first wrong-sized paint.
@@ -378,6 +453,7 @@ public final class BrowserModel {
 
     public func closeTab(_ tab: BrowserTab) {
         guard workspaceManager.descriptor(tab.id) != nil else { return }
+        if tab.id == selectedTabID { cancelSelectDropdown() }
         answerPendingDialog(on: tab)
         let engineID = tab.engineID
         workspaceManager.closeTab(tab.id)
@@ -528,6 +604,7 @@ public final class BrowserModel {
     }
 
     public func shutdown() {
+        cancelSelectDropdown()
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
             self.terminationObserver = nil
@@ -537,6 +614,39 @@ public final class BrowserModel {
         Self.processApp = nil
         engineToTab.removeAll()
         for tab in runtimeTabs.values { tab.detach() }
+    }
+
+    private func presentSelectDropdown(
+        engineID: UInt64,
+        requestID: UInt64,
+        x: Int32,
+        y: Int32,
+        minimumWidth: Int32,
+        items: [PortSelectItem]
+    ) {
+        guard engineID == selectedTab?.engineID, !items.isEmpty else {
+            app?.answerSelectDropdown(in: engineID, requestID: requestID, selection: nil)
+            return
+        }
+
+        cancelSelectDropdown()
+        let presenter = SelectDropdownPresenter()
+        selectDropdownPresenter = presenter
+        presenter.present(
+            items: items,
+            minimumWidth: minimumWidth,
+            at: NSPoint(x: CGFloat(x), y: CGFloat(y)),
+            in: webView
+        ) { [weak self] selection in
+            guard let self else { return }
+            self.app?.answerSelectDropdown(in: engineID, requestID: requestID, selection: selection)
+            self.selectDropdownPresenter = nil
+        }
+    }
+
+    private func cancelSelectDropdown() {
+        selectDropdownPresenter?.cancel()
+        selectDropdownPresenter = nil
     }
 
     // MARK: - Engine events

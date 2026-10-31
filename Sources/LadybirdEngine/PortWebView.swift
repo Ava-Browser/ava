@@ -19,7 +19,7 @@ public final class PortWebView: NSView {
     public var onViewportChange: ((Int32, Int32, Double) -> Void)?
 
     /// Mouse input, in CSS pixels relative to this view's top-left.
-    public var onMouse: ((PortMouseEventType, Double, Double, PortMouseButton, PortMouseButton, Int32, Double) -> Void)?
+    public var onMouse: ((PortMouseEventType, Double, Double, PortMouseButton, PortMouseButton, Int32, Double, UInt32) -> Void)?
 
     /// Keyboard input. The engine dispatches these asynchronously (see `PortApp.sendKey`).
     public var onKey: ((Int32, UInt32, UInt32, Bool) -> Void)?
@@ -157,48 +157,48 @@ public final class PortWebView: NSView {
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let (x, y) = point(event)
-        onMouse?(.down, x, y, .primary, .primary, Int32(event.clickCount), 0)
+        onMouse?(.down, x, y, .primary, .primary, Int32(event.clickCount), 0, PortWebView.engineModifiers(from: event.modifierFlags))
     }
 
     public override func mouseUp(with event: NSEvent) {
         let (x, y) = point(event)
         // Nothing is held after a mouse-up, which is what the engine expects in `buttons`.
-        onMouse?(.up, x, y, .primary, .none, Int32(event.clickCount), 0)
+        onMouse?(.up, x, y, .primary, .none, Int32(event.clickCount), 0, PortWebView.engineModifiers(from: event.modifierFlags))
     }
 
     public override func mouseDragged(with event: NSEvent) {
         let (x, y) = point(event)
-        onMouse?(.move, x, y, .none, .primary, 0, 0)
+        onMouse?(.move, x, y, .none, .primary, 0, 0, PortWebView.engineModifiers(from: event.modifierFlags))
     }
 
     public override func mouseMoved(with event: NSEvent) {
         let (x, y) = point(event)
-        onMouse?(.move, x, y, .none, .none, 0, 0)
+        onMouse?(.move, x, y, .none, .none, 0, 0, PortWebView.engineModifiers(from: event.modifierFlags))
     }
 
     public override func otherMouseDown(with event: NSEvent) {
         let (x, y) = point(event)
-        onMouse?(.down, x, y, .middle, .middle, Int32(event.clickCount), 0)
+        onMouse?(.down, x, y, .middle, .middle, Int32(event.clickCount), 0, PortWebView.engineModifiers(from: event.modifierFlags))
     }
 
     public override func otherMouseUp(with event: NSEvent) {
         let (x, y) = point(event)
-        onMouse?(.up, x, y, .middle, .none, Int32(event.clickCount), 0)
+        onMouse?(.up, x, y, .middle, .none, Int32(event.clickCount), 0, PortWebView.engineModifiers(from: event.modifierFlags))
     }
 
     public override func rightMouseDown(with event: NSEvent) {
         let (x, y) = point(event)
-        onMouse?(.down, x, y, .secondary, .secondary, Int32(event.clickCount), 0)
+        onMouse?(.down, x, y, .secondary, .secondary, Int32(event.clickCount), 0, PortWebView.engineModifiers(from: event.modifierFlags))
     }
 
     public override func rightMouseUp(with event: NSEvent) {
         let (x, y) = point(event)
-        onMouse?(.up, x, y, .secondary, .none, Int32(event.clickCount), 0)
+        onMouse?(.up, x, y, .secondary, .none, Int32(event.clickCount), 0, PortWebView.engineModifiers(from: event.modifierFlags))
     }
 
     public override func scrollWheel(with event: NSEvent) {
         let (x, y) = point(event)
-        onMouse?(.wheel, x, y, .none, .none, 0, PortWebView.wheelDelta(from: event))
+        onMouse?(.wheel, x, y, .none, .none, 0, PortWebView.wheelDelta(from: event), PortWebView.engineModifiers(from: event.modifierFlags))
     }
 
     /// Converts AppKit's wheel delta to the engine's sign convention and units.
@@ -245,13 +245,18 @@ public final class PortWebView: NSView {
     /// Only the keys the chrome actually needs are mapped; everything else goes through as text with an unresolved key,
     /// which the engine handles via `code_point`. `invalidCharacters` is what carries “this keypress produced no text”
     /// (arrows, Escape), and those are sent by key code instead.
-    private static func translate(_ event: NSEvent) -> (Int32, UInt32, UInt32) {
+    static func engineModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
         var modifiers: UInt32 = 0
-        let flags = event.modifierFlags
         if flags.contains(.option) { modifiers |= PortKey.modAlt }
         if flags.contains(.control) { modifiers |= PortKey.modCtrl }
         if flags.contains(.shift) { modifiers |= PortKey.modShift }
         if flags.contains(.command) { modifiers |= PortKey.modSuper }
+        return modifiers
+    }
+
+    private static func translate(_ event: NSEvent) -> (Int32, UInt32, UInt32) {
+        let flags = event.modifierFlags
+        let modifiers = engineModifiers(from: flags)
 
         // Web's KeyCode ordinals. The letters are here only for the Command shortcuts: a bare letter still travels as a
         // `code_point`, because that is what inserts text, and mapping it here would deliver a key the engine resolves
