@@ -106,6 +106,40 @@ struct WorkspacePersistenceTests {
         #expect(model.tabs.count == 2)
     }
 
+    /// A background space's page can still call `window.open()`. Adopting that tab must not point the visible view at
+    /// it while the space's own tab is what the sidebar shows, or input goes to a tab nobody can see.
+    @Test("An engine-created tab in a background space is adopted without being activated")
+    func engineCreatedBackgroundTabIsNotActivated() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+
+        let manager = WorkspaceManager(store: store)
+        let foreground = manager.createWorkspace(name: "Foreground")
+        _ = try #require(manager.createTab(url: "https://visible.example"))
+        let background = manager.createWorkspace(name: "Background")
+        let backgroundParent = try #require(manager.createTab(url: "https://hidden.example"))
+        manager.selectWorkspace(foreground.id)
+
+        let model = BrowserModel(store: store)
+        let visible = try #require(model.selectedTab)
+        // The parent is in the background space, so its runtime object is only reachable through the space's own list.
+        model.workspaceManager.selectWorkspace(background.id)
+        let parent = try #require(model.selectedTab)
+        model.workspaceManager.selectWorkspace(foreground.id)
+        #expect(model.selectedTab?.id == visible.id)
+
+        let child = try #require(model.adoptEngineTab(parent: parent, engineID: 42, activate: true))
+
+        #expect(child.engineID == 42)
+        // The view is what `onMouse`, `onKey` and `onTypeText` treat as the visible target, and `select` is the only
+        // thing that moves it. Pointing it at the background tab sends input to a page nobody can see.
+        #expect(model.webView.currentTabID != child.engineID)
+        #expect(model.selectedTab?.id == visible.id)
+        #expect(model.workspaceManager.activeTabID == visible.id)
+        #expect(model.workspaceManager.tabs(in: .normal, workspaceID: background.id).map(\.id).contains(child.id))
+        #expect(model.workspaceManager.tabs(in: .normal, workspaceID: foreground.id).count == 1)
+    }
+
     @Test("Restored descriptors start unloaded until selected with an engine")
     func restoredTabsAreLazy() throws {
         let store = temporaryStore()

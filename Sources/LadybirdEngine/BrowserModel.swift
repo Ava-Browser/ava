@@ -352,14 +352,17 @@ public final class BrowserModel {
     @discardableResult
     func adoptEngineTab(parent: BrowserTab, engineID: UInt64, activate: Bool) -> BrowserTab? {
         let workspaceID = workspaceManager.descriptor(parent.id)?.workspaceID ?? workspaceManager.activeSpaceID
-        guard let descriptor = workspaceManager.createTab(in: workspaceID, url: "about:blank", select: activate) else {
+        // A popup from a background space must not steal the visible view: `select` would point the web view at a tab
+        // whose space is not on screen, while `selectedTab` kept resolving to that space's own tab.
+        let shouldActivate = activate && workspaceID == workspaceManager.activeSpaceID
+        guard let descriptor = workspaceManager.createTab(in: workspaceID, url: "about:blank", select: shouldActivate) else {
             app?.destroyTab(engineID)
             return nil
         }
         let tab = BrowserTab(descriptor: descriptor, engineID: engineID)
         runtimeTabs[tab.id] = tab
         engineToTab[engineID] = tab.id
-        if activate {
+        if shouldActivate {
             select(tab, force: true)
         }
         return tab
