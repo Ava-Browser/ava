@@ -411,7 +411,13 @@ Implementation should proceed in five isolated, reviewable stages across the two
 - **Apple Touch Icons (`apple-touch-icon`):** Deferred. LibWeb does not download or parse touch icons. Any touch icon support requires an upstream LibWeb patch to `HTMLLinkElement.cpp`.
 - **Web App Manifest Icons:** Deferred. No manifest downloader exists in Ladybird.
 - **TLS Certificate Detail Sheet:** Deferred. `LibWebView` exposes no security handshake info. Scheme-based indication (`https://`) remains standard.
-- **Icon persistence to disk:** Deferred. `faviconRef` is stored in the graph, but icon bytes are cached in memory per session, so a cold launch shows the placeholder until the page reloads.
+- **Icon persistence to disk:** Implemented in `Sources/LadybirdEngine/FaviconStore.swift`
+  (`~/Library/Application Support/LadybirdMac/Favicons/<sha256>.png`, beside `spaces.json`). Application Support rather
+  than Caches because these bytes are what a restored, unloaded tab draws: macOS may purge Caches under disk pressure,
+  which would undo exactly that. `BrowserModel.handleFaviconChange` writes the engine's PNG, and `BrowserModel.init` /
+  `runtime(for:)` hydrate `BrowserTab.favicon` from the hash already present in `TabDescriptor.faviconRef`, so a
+  restored or unloaded row draws its icon before the engine exists. Pruning keeps the directory bounded by the
+  referenced hashes and now also runs when tabs close, when a space is deleted, and when an icon is cleared.
 
 ### 8.3 ABI mismatch is a build-time hazard, not a runtime one to document away
 

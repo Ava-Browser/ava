@@ -31,14 +31,21 @@ public final class BrowserModel {
     @ObservationIgnored private var app: PortApp?
     @ObservationIgnored private var terminationObserver: (any NSObjectProtocol)?
     @ObservationIgnored private let newTabURLProvider: (() -> String)?
+    @ObservationIgnored private let faviconStore: FaviconStore
 
     public init(
         store: GraphStore = .applicationDefault(),
+        faviconStore: FaviconStore = .applicationDefault(),
         newTabURLProvider: (() -> String)? = nil
     ) {
         let manager = WorkspaceManager(store: store)
         workspaceManager = manager
-        runtimeTabs = Dictionary(uniqueKeysWithValues: manager.tabs.map { ($0.id, BrowserTab(descriptor: $0)) })
+        self.faviconStore = faviconStore
+        // Restored rows paint their cached icon before the engine exists, so the sidebar is not a wall of globes.
+        runtimeTabs = Dictionary(uniqueKeysWithValues: manager.tabs.map { descriptor in
+            let ref = descriptor.faviconRef
+            return (descriptor.id, BrowserTab(descriptor: descriptor, favicon: ref.flatMap(faviconStore.image(for:))))
+        })
         webView = PortWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         self.newTabURLProvider = newTabURLProvider
     }
@@ -257,6 +264,7 @@ public final class BrowserModel {
             }
             runtimeTabs.removeValue(forKey: tab.id)
         }
+        pruneFaviconCache()
     }
 
     @discardableResult
@@ -397,6 +405,7 @@ public final class BrowserModel {
             app?.destroyTab(engineID)
         }
         runtimeTabs.removeValue(forKey: tab.id)
+        pruneFaviconCache()
     }
 
     public func closeSelectedTab() {
@@ -422,6 +431,7 @@ public final class BrowserModel {
             webView.clearSurface()
             addressText = ""
         }
+        pruneFaviconCache()
     }
 
     public func retier(_ tab: BrowserTab, to tier: TabTier) {
@@ -584,6 +594,7 @@ public final class BrowserModel {
         guard let data, let hash, !hash.isEmpty else {
             tab.clearFavicon()
             workspaceManager.updateTab(id, url: tab.currentURL, title: tab.title, clearFaviconRef: true)
+            pruneFaviconCache()
             return
         }
 
@@ -599,13 +610,18 @@ public final class BrowserModel {
 
         tab.updateFavicon(image: image, ref: hash)
         workspaceManager.updateTab(id, url: tab.currentURL, title: tab.title, faviconRef: hash)
+        // Written even on a memory-cache hit: pruning may have deleted the file for a hash still held in memory, and
+        // the reference is now persisted again. Synchronous by precedent: the `updateTab` above already rewrites the
+        // whole graph inside this callback, and a few hundred bytes is the smaller of the two writes.
+        // shortcut: main-thread file I/O inside an engine callback (R6); revisit if the icon set grows a byte quota.
+        if image != nil { faviconStore.store(data, for: hash) }
         pruneFaviconCache()
     }
 
-    /// Drops decoded icons no live tab references any more.
+    /// Drops decoded icons no live tab references any more, in memory and on disk.
     private func pruneFaviconCache() {
         let live = Set(runtimeTabs.values.compactMap(\.faviconRef))
-        guard live.count < faviconCache.count else { return }
+        faviconStore.prune(keeping: live)
         faviconCache = faviconCache.filter { live.contains($0.key) }
     }
 
@@ -640,7 +656,8 @@ public final class BrowserModel {
             if let existing = runtimeTabs[descriptor.id] {
                 return existing
             }
-            let newTab = BrowserTab(descriptor: descriptor)
+            let ref = descriptor.faviconRef
+            let newTab = BrowserTab(descriptor: descriptor, favicon: ref.flatMap(faviconStore.image(for:)))
             runtimeTabs[descriptor.id] = newTab
             return newTab
         }

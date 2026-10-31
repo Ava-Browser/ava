@@ -75,6 +75,41 @@ struct FaviconMetadataTests {
         #expect(tab.faviconRef == nil)
     }
 
+    @Test("A restored tab draws its favicon from disk before the engine exists")
+    func diskCacheSurvivesRelaunch() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let favicons = FaviconStore(directory: directory)
+        let bitmap = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 1, pixelsHigh: 1, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ))
+        let png = try #require(bitmap.representation(using: .png, properties: [:]))
+        let hash = String(repeating: "a", count: 64)
+        favicons.store(png, for: hash)
+
+        // The relaunch: a fresh model over the persisted graph, never started, so no engine has reported a favicon.
+        let graphStore = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: graphStore.url.deletingLastPathComponent()) }
+        let manager = WorkspaceManager(store: graphStore)
+        _ = manager.createWorkspace(name: "Test Space", icon: "globe")
+        let descriptor = try #require(manager.createTab(tier: .normal, url: "https://example.com"))
+        manager.updateTab(descriptor.id, url: "https://example.com", faviconRef: hash)
+
+        let model = BrowserModel(store: graphStore, faviconStore: FaviconStore(directory: directory))
+        let restored = try #require(model.tabs.first { $0.id == descriptor.id })
+        #expect(restored.favicon != nil)
+        #expect(restored.isLoaded == false)
+
+        // Pruning keeps referenced icons only, and a non-hex hash never becomes a path.
+        favicons.store(png, for: String(repeating: "b", count: 64))
+        favicons.prune(keeping: [hash])
+        #expect(favicons.image(for: hash) != nil)
+        #expect(favicons.image(for: String(repeating: "b", count: 64)) == nil)
+        #expect(favicons.image(for: "../../etc/passwd") == nil)
+    }
+
     @Test("Favicon hash reference persists through WorkspaceManager graph store")
     func persistenceRoundTrip() throws {
         let store = temporaryStore()
