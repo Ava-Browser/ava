@@ -104,16 +104,20 @@ public struct AddressBarView: View {
         }
     }
 
+    /// One control, two jobs: a load in progress can be stopped, and stopping is what the same slot means everywhere
+    /// else. Keeping both visible would give the user two adjacent buttons whose second is always a no-op.
     private var trailingReload: some View {
-        Button(action: model.reload) {
-            Image(systemName: "arrow.clockwise")
+        Button {
+            if model.isLoading { model.stopLoading() } else { model.reload() }
+        } label: {
+            Image(systemName: model.isLoading ? "xmark" : "arrow.clockwise")
                 .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(.secondary)
                 .frame(width: 14, height: 14)
         }
         .buttonStyle(.plain)
-        .help("Reload the page (⌘R)")
+        .help(model.isLoading ? "Stop loading (⌘.)" : "Reload the page (⌘R)")
         .disabled(model.currentURL.isEmpty)
-        .accessibilityLabel("Reload")
+        .accessibilityLabel(model.isLoading ? "Stop Loading" : "Reload")
     }
 }

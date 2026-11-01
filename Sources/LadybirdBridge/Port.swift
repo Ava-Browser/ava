@@ -519,6 +519,20 @@ public final class PortApp {
         var delta: Int32 { self == .back ? -1 : 1 }
     }
 
+    /// Reloads the tab's current document. Not a substitute for `load(currentURL)`: the engine marks the history visit
+    /// a reload, so a navigation stopped before its document committed is retried instead of becoming a new entry.
+    /// `bypassCache` re-fetches from the network.
+    public func reload(in tab: UInt64, bypassCache: Bool = false) {
+        guard let handle else { return }
+        LbTabReload(handle, tab, bypassCache ? 1 : 0)
+    }
+
+    /// Stops the tab's current navigation and leaves the document that was showing.
+    public func stopLoading(in tab: UInt64) {
+        guard let handle else { return }
+        LbTabStopLoading(handle, tab)
+    }
+
     public func traverseHistory(_ direction: HistoryDirection, in tab: UInt64) {
         guard let handle else { return }
         LbTabTraverseHistory(handle, tab, direction.delta)

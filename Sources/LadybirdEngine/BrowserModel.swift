@@ -586,9 +586,26 @@ public final class BrowserModel {
         pasteboard.setString(currentURL, forType: .string)
     }
 
-    public func reload() {
+    /// Reloads the selected tab through the engine rather than re-navigating its URL, so history and the cache behave.
+    public func reload(bypassCache: Bool = false) {
         guard let selectedTab, !selectedTab.currentURL.isEmpty else { return }
-        load(selectedTab.currentURL, in: selectedTab)
+        let wasUnloaded = selectedTab.engineID == nil
+        guard let app, rehydrate(selectedTab), let engineID = selectedTab.engineID else { return }
+        guard !wasUnloaded else {
+            // An unloaded descriptor has no document to reload, so its first activation is an ordinary navigation. The
+            // viewport has to reach the new engine tab before that navigation, not after its first wrong-sized paint.
+            if selectedTab.id == selectedTabID { webView.reportViewportAfterTabCreation() }
+            load(selectedTab.currentURL, in: selectedTab)
+            return
+        }
+        app.reload(in: engineID, bypassCache: bypassCache)
+        selectedTab.setLoading(true)
+    }
+
+    public func stopLoading() {
+        guard let app, let engineID = selectedTab?.engineID else { return }
+        app.stopLoading(in: engineID)
+        selectedTab?.setLoading(false)
     }
 
     public func load(_ input: String) {

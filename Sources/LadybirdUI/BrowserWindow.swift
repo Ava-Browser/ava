@@ -173,6 +173,9 @@ public struct BrowserWindow: View {
             .background {
                 Group {
                     Button("") { model.reload() }.keyboardShortcut("r", modifiers: .command)
+                    // ⌘⇧R re-fetches instead of reusing the cache, which is the only way to see a stale page again.
+                    Button("") { model.reload(bypassCache: true) }.keyboardShortcut("r", modifiers: [.command, .shift])
+                    Button("") { model.stopLoading() }.keyboardShortcut(".", modifiers: .command)
                     Button("") { addressState.beginEditing() }.keyboardShortcut("l", modifiers: .command)
                     // ⌘[ / ⌘] is the macOS convention for history, and it is what the buttons' tooltips promise.
                     Button("") { model.goBack() }.keyboardShortcut("[", modifiers: .command)
