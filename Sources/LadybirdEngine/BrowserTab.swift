@@ -44,6 +44,9 @@ public final class BrowserTab: Identifiable {
     public private(set) var currentURL: String
     public private(set) var title: String
     public private(set) var isLoading: Bool = false
+    /// The engine reported this tab's renderer dead, or asked for its crash overlay. The surface keeps showing the last
+    /// frame until a reload, so a host that ignores this looks merely frozen.
+    public private(set) var isCrashed: Bool = false
     public private(set) var dialog: TabDialog?
     public private(set) var favicon: NSImage?
     public private(set) var faviconRef: String?
@@ -66,6 +69,7 @@ public final class BrowserTab: Identifiable {
     func detach() {
         engineID = nil
         isLoading = false
+        isCrashed = false
         dialog = nil
     }
 
@@ -99,6 +103,7 @@ public final class BrowserTab: Identifiable {
     }
 
     func setLoading(_ loading: Bool) { isLoading = loading }
+    func setCrashed(_ crashed: Bool) { isCrashed = crashed }
     func present(dialog: TabDialog) { self.dialog = dialog }
     func clearDialog() { dialog = nil }
 }

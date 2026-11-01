@@ -219,6 +219,9 @@ public struct BrowserWindow: View {
             StartPageView(model: model)
         } else {
             WebContentView(webView: model.webView)
+                .overlay {
+                    if model.isCrashed { CrashOverlayView(model: model) }
+                }
         }
     }
 

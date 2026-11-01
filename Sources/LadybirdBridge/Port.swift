@@ -97,6 +97,11 @@ public struct PortPageCallbacks {
     public var onNewTab: ((UInt64, UInt64, Bool, Bool) -> Void)?
     /// The engine has already destroyed `tab`; the host must remove its UI state without calling destroy again.
     public var onTabClosed: ((UInt64) -> Void)?
+    /// The renderer process for `tab` died. `reason` is a `WebContentCrashReason` ordinal: 0 process crash, 1 rejected IPC.
+    /// Notifications only — they never block the page, so a host that ignores them is left showing a dead frame.
+    public var onWebContentCrashed: ((UInt64, Int32) -> Void)?
+    /// The engine wants its crash overlay shown (true) or hidden (false) over `tab`.
+    public var onCrashOverlayStateChange: ((UInt64, Bool) -> Void)?
 
     public init() {}
 }
@@ -364,6 +369,16 @@ public final class PortApp {
             guard let context = CallbackContext.resolve(raw) else { return }
             let callback = context.page.onTabClosed
             MainActor.assumeIsolated { callback?(tab) }
+        }
+        group.on_web_content_crashed = { raw, tab, reason in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onWebContentCrashed
+            MainActor.assumeIsolated { callback?(tab, reason) }
+        }
+        group.on_crash_overlay_state_change = { raw, tab, active in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onCrashOverlayStateChange
+            MainActor.assumeIsolated { callback?(tab, active != 0) }
         }
         pageCallbacksInstalled = LbAppSetPageCallbacks(handle, &group) == 1
     }

@@ -57,6 +57,8 @@ public final class BrowserModel {
     public var selectedTab: BrowserTab? { selectedTabID.flatMap { runtimeTabs[$0] } }
     public var currentURL: String { selectedTab?.currentURL ?? "" }
     public var isLoading: Bool { selectedTab?.isLoading ?? false }
+    /// The selected tab's renderer is gone. Its last frame stays attached to the view, so the chrome has to say so.
+    public var isCrashed: Bool { selectedTab?.isCrashed ?? false }
 
     public var essentialTabs: [BrowserTab] { runtime(for: workspaceManager.tabs(in: .essential)) }
     public var pinnedTabs: [BrowserTab] { runtime(for: workspaceManager.tabs(in: .pinned)) }
@@ -132,6 +134,14 @@ public final class BrowserModel {
         }
         page.onTabClosed = { [weak self] engineID in
             MainActor.assumeIsolated { self?.handleEngineClosedTab(engineID) }
+        }
+        page.onWebContentCrashed = { [weak self] engineID, _ in
+            MainActor.assumeIsolated { self?.setCrashed(true, on: engineID) }
+        }
+        // The engine keeps driving this after a reload, so it is the authoritative on/off switch for the overlay;
+        // `onWebContentCrashed` is what arrives first and is the only signal for a tab the engine never re-overlays.
+        page.onCrashOverlayStateChange = { [weak self] engineID, active in
+            MainActor.assumeIsolated { self?.setCrashed(active, on: engineID) }
         }
 
         var picker = PortPickerCallbacks()
@@ -598,6 +608,9 @@ public final class BrowserModel {
             load(selectedTab.currentURL, in: selectedTab)
             return
         }
+        // A reload is the one gesture a crashed tab offers, and it is also what revives it, so clear the overlay here
+        // rather than waiting for an engine notification that may not come.
+        selectedTab.setCrashed(false)
         app.reload(in: engineID, bypassCache: bypassCache)
         selectedTab.setLoading(true)
     }
@@ -714,6 +727,11 @@ public final class BrowserModel {
     private func handleLoadingStateChange(_ engineID: UInt64, _ isLoading: Bool) {
         guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
         tab.setLoading(isLoading)
+    }
+
+    func setCrashed(_ crashed: Bool, on engineID: UInt64) {
+        guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
+        tab.setCrashed(crashed)
     }
 
     private func handleFaviconChange(_ engineID: UInt64, _ data: Data?, _ hash: String?) {
