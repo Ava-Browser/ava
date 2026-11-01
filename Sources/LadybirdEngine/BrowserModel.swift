@@ -615,6 +615,11 @@ public final class BrowserModel {
         workspaceManager.retier(tab.id, to: tier)
     }
 
+    /// The sidebar's single drag operation: which section the row landed in, and where in it.
+    public func move(_ tab: BrowserTab, to tier: TabTier, at index: Int? = nil) {
+        workspaceManager.moveTab(tab.id, to: tier, at: index)
+    }
+
     // MARK: - Dialogs
 
     private static func takeDialogID() -> UInt64 {

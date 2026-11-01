@@ -21,10 +21,9 @@ struct TabSidebar: View {
 
     @State private var renameState = SpaceRenameState()
 
-    @State private var isEssentialsTargeted: Bool = false
     @State private var isPinnedTargeted: Bool = false
     @State private var isLineTargeted: Bool = false
-    @State private var isNormalTargeted: Bool = false
+    @State private var essentialsWidth: CGFloat = 0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -54,16 +53,22 @@ struct TabSidebar: View {
                     .accessibilityLabel("Persistence failure: \(failure)")
                 }
 
-                // 1. Essentials Tier (adaptive 48x48 rounded tiles, captionless)
-                essentialsSection
-                    .padding(.horizontal, 10)
-                    .padding(.top, 10)
-                    .padding(.bottom, 12)
+                // 1. Essentials Tier (adaptive 48x48 rounded tiles, captionless). Nothing is drawn when there are
+                // none: an empty tier that reserves height is just a gap at the top of the sidebar. Reordering and
+                // removing still work whenever at least one essential exists; making one from scratch is the row's
+                // "Make Essential" action.
+                if hasEssentials {
+                    essentialsSection
+                        .padding(.horizontal, 10)
+                        .padding(.top, 10)
+                        .padding(.bottom, 12)
+                }
 
                 // 2. Active Space Header Row
                 if let activeWorkspace = model.activeWorkspace {
                     activeSpaceHeader(activeWorkspace)
                         .padding(.horizontal, 10)
+                        .padding(.top, hasEssentials ? 0 : 10)
                         .padding(.bottom, (!model.pinnedTabs.isEmpty || isPinnedTargeted) ? 4 : 2)
                 }
 
@@ -84,8 +89,10 @@ struct TabSidebar: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 2)
 
-                // 6. Normal Tabs Tier
+                // 6. Normal Tabs Tier. An empty tier draws nothing but keeps a small strip so the section below the
+                // divider still reads as a place to drop, rather than collapsing into the divider.
                 normalTabsSection
+                    .frame(maxWidth: .infinity, minHeight: model.normalTabs.isEmpty ? 40 : 0, alignment: .topLeading)
                     .padding(.horizontal, 10)
                     .padding(.top, 4)
                     .padding(.bottom, 12)
@@ -95,6 +102,15 @@ struct TabSidebar: View {
             }
             .frame(maxWidth: .infinity, minHeight: 400, alignment: .topLeading)
             .contentShape(Rectangle())
+            // Catch-all for the empty space, which is most of the sidebar: a drop anywhere that is not a section of its
+            // own means unpinned, so dragging a tab out of Essentials or Pinned never needs a precise aim. SwiftUI
+            // resolves to the innermost target under the pointer, so the sections above keep their own meaning.
+            .dropDestination(for: String.self) { ids, _ in
+                moved(ids, to: .normal, at: nil)
+            }
+            // Space switch: the pinned/normal lists are different data, so they fade and slide rather than swapping
+            // instantly. Driving it off the space id means one place covers the dock, the swipe and the settings list.
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.activeWorkspace?.id)
             .contextMenu {
                 if let activeWorkspace = model.activeWorkspace {
                     SpaceContextMenu(workspace: activeWorkspace, model: model, actionState: actionState)
@@ -140,41 +156,40 @@ struct TabSidebar: View {
 
     // MARK: - Essentials Section
 
+    private var hasEssentials: Bool { !model.essentialTabs.isEmpty }
+
     private var essentialsSection: some View {
-        VStack(spacing: 0) {
-            if model.essentialTabs.isEmpty {
-                // Real-sized drop target without resting filler text; highlights on drag
-                ZStack {
-                    if isEssentialsTargeted {
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4]))
-                            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-                        Text("Drop to make Essential")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, minHeight: 32)
-                .contentShape(Rectangle())
-                .dropDestination(for: String.self) { ids, _ in
-                    retier(ids, to: .essential)
-                } isTargeted: { targeted in
-                    isEssentialsTargeted = targeted
-                }
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48, maximum: 48), spacing: 8)], alignment: .leading, spacing: 8) {
-                    ForEach(model.essentialTabs) { tab in
-                        EssentialTile(tab: tab, model: model)
-                            .draggable(tab.id.raw.uuidString)
-                    }
-                }
-                .dropDestination(for: String.self) { ids, _ in
-                    retier(ids, to: .essential)
-                } isTargeted: { targeted in
-                    isEssentialsTargeted = targeted
-                }
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: EssentialTile.size, maximum: EssentialTile.size), spacing: EssentialTile.spacing)], alignment: .leading, spacing: EssentialTile.spacing) {
+            ForEach(model.essentialTabs) { tab in
+                EssentialTile(tab: tab, model: model)
+                    .draggable(tab.id.raw.uuidString)
             }
         }
+        .background {
+            // The grid's own width is what decides how many tiles fit per row, which is what turns a drop point into
+            // a slot. Measured in the background so the grid keeps its own layout.
+            GeometryReader { proxy in
+                Color.clear.onAppear { essentialsWidth = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, width in essentialsWidth = width }
+            }
+        }
+        .dropDestination(for: String.self) { ids, location in
+            moved(ids, to: .essential, at: gridSlot(at: location, count: model.essentialTabs.count))
+        }
+    }
+
+    /// The slot a drop point means in a uniform row-major grid.
+    ///
+    /// The right half of a tile means "after it", which is what makes reordering possible at all: every position
+    /// between two tiles would otherwise be the left half of the later one. For the last tile of a full row that must
+    /// be able to reach `count`, or the final slot is unreachable from inside the grid.
+    private func gridSlot(at location: CGPoint, count: Int) -> Int {
+        let stride = EssentialTile.size + EssentialTile.spacing
+        let columns = max(1, Int((essentialsWidth + EssentialTile.spacing) / stride))
+        let row = max(0, Int(location.y / stride))
+        let column = max(0, min(columns - 1, Int(location.x / stride)))
+        let afterTile = location.x.truncatingRemainder(dividingBy: stride) >= EssentialTile.size / 2
+        return min(row * columns + column + (afterTile ? 1 : 0), count)
     }
 
     // MARK: - Active Space Header
@@ -272,8 +287,9 @@ struct TabSidebar: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .onHover { isHeaderHovered = $0 }
+        // The space row doubles as "the top of Pinned", so a drop here pins a tab as the first one.
         .dropDestination(for: String.self) { ids, _ in
-            retier(ids, to: .pinned)
+            moved(ids, to: .pinned, at: 0)
         } isTargeted: { targeted in
             isPinnedTargeted = targeted
         }
@@ -285,30 +301,15 @@ struct TabSidebar: View {
     // MARK: - Pinned Section
 
     private var pinnedSection: some View {
-        VStack(spacing: 2) {
-            if model.pinnedTabs.isEmpty {
-                if isPinnedTargeted {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4]))
-                            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-                        Text("Drop to Pin Tab")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 28)
-                }
-            } else {
-                ForEach(model.pinnedTabs) { tab in
-                    TabRowView(tab: tab, model: model)
-                        .draggable(tab.id.raw.uuidString)
-                        .dropDestination(for: String.self) { ids, _ in retier(ids, to: .pinned) }
-                        .contextMenu { tabMenu(tab) }
-                }
+        VStack(spacing: TabRowView.spacing) {
+            ForEach(model.pinnedTabs) { tab in
+                TabRowView(tab: tab, model: model)
+                    .draggable(tab.id.raw.uuidString)
+                    .contextMenu { tabMenu(tab, tier: .pinned) }
             }
         }
-        .dropDestination(for: String.self) { ids, _ in
-            retier(ids, to: .pinned)
+        .dropDestination(for: String.self) { ids, location in
+            moved(ids, to: .pinned, at: rowSlot(at: location, count: model.pinnedTabs.count))
         } isTargeted: { targeted in
             isPinnedTargeted = targeted
         }
@@ -335,8 +336,10 @@ struct TabSidebar: View {
         }
         .frame(height: 20)
         .contentShape(Rectangle())
+        // The line sits on the boundary, so it is the unpinned drop target: it is always present, which is what makes
+        // "drag a tab back out of pinned" work even when there are no normal tabs to aim at.
         .dropDestination(for: String.self) { ids, _ in
-            retier(ids, to: .pinned)
+            moved(ids, to: .normal, at: nil)
         } isTargeted: { targeted in
             isLineTargeted = targeted
         }
@@ -371,61 +374,48 @@ struct TabSidebar: View {
     // MARK: - Normal Tabs Section
 
     private var normalTabsSection: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: TabRowView.spacing) {
             ForEach(model.normalTabs) { tab in
                 TabRowView(tab: tab, model: model)
                     .draggable(tab.id.raw.uuidString)
-                    .dropDestination(for: String.self) { ids, _ in retier(ids, to: .normal) }
-                    .contextMenu { tabMenu(tab) }
-            }
-            if model.normalTabs.isEmpty {
-                ZStack {
-                    if isNormalTargeted {
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [4]))
-                            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-                        Text("Drop tab here")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, minHeight: 28)
-                .contentShape(Rectangle())
-                .dropDestination(for: String.self) { ids, _ in
-                    retier(ids, to: .normal)
-                } isTargeted: { targeted in
-                    isNormalTargeted = targeted
-                }
+                    .contextMenu { tabMenu(tab, tier: .normal) }
             }
         }
-        .dropDestination(for: String.self) { ids, _ in
-            retier(ids, to: .normal)
-        } isTargeted: { targeted in
-            isNormalTargeted = targeted
+        .dropDestination(for: String.self) { ids, location in
+            moved(ids, to: .normal, at: rowSlot(at: location, count: model.normalTabs.count))
         }
     }
 
     // MARK: - Helpers
 
+    /// The section a row is rendered in already knows its tier, so this takes it instead of looking the descriptor up
+    /// three times per row — which was three linear scans of the whole graph, on every row, on every sidebar update.
     @ViewBuilder
-    private func tabMenu(_ tab: BrowserTab) -> some View {
-        if model.workspaceManager.descriptor(tab.id)?.tier != .pinned {
+    private func tabMenu(_ tab: BrowserTab, tier: TabTier) -> some View {
+        if tier != .pinned {
             Button("Pin Tab") { model.retier(tab, to: .pinned) }
         }
-        if model.workspaceManager.descriptor(tab.id)?.tier != .essential {
+        if tier != .essential {
             Button("Make Essential") { model.retier(tab, to: .essential) }
         }
-        if model.workspaceManager.descriptor(tab.id)?.tier != .normal {
+        if tier != .normal {
             Button("Move to Tabs") { model.retier(tab, to: .normal) }
         }
         Divider()
         Button("Close Tab", role: .destructive) { model.closeTab(tab) }
     }
 
-    private func retier(_ values: [String], to tier: TabTier) -> Bool {
+    /// The slot a drop point means in a uniform column of rows. The nearest gap wins, so the top half of a row lands
+    /// above it and the bottom half below it.
+    private func rowSlot(at location: CGPoint, count: Int) -> Int {
+        let stride = TabRowView.height + TabRowView.spacing
+        return min(max(Int((location.y / stride).rounded()), 0), count)
+    }
+
+    private func moved(_ values: [String], to tier: TabTier, at index: Int?) -> Bool {
         guard let value = values.first, let uuid = UUID(uuidString: value),
               let tab = model.tabs.first(where: { $0.id == TabID(raw: uuid) }) else { return false }
-        model.retier(tab, to: tier)
+        model.move(tab, to: tier, at: index)
         return true
     }
 }
@@ -433,6 +423,9 @@ struct TabSidebar: View {
 // MARK: - EssentialTile (48x48 Captionless)
 
 private struct EssentialTile: View {
+    static let size: CGFloat = 48
+    static let spacing: CGFloat = 8
+
     let tab: BrowserTab
     let model: BrowserModel
     @State private var isHovered = false
@@ -483,9 +476,11 @@ private struct EssentialTile: View {
                         .accessibilityHidden(true)
                 }
             }
-            .frame(width: 48, height: 48)
+            .frame(width: Self.size, height: Self.size)
         }
         .buttonStyle(.plain)
+        // `.plain` only takes the glyph's own bounds, so a click beside the icon did nothing.
+        .contentShape(RoundedRectangle(cornerRadius: 10))
         .onHover { isHovered = $0 }
         .help(tab.title.isEmpty ? tab.currentURL : "\(tab.title)\(tab.currentURL.isEmpty ? "" : " — " + tab.currentURL)")
         .accessibilityLabel(tab.title.isEmpty ? "Essential tab" : tab.title)
@@ -502,6 +497,9 @@ private struct EssentialTile: View {
 // MARK: - TabRowView (Sibling Close Button & Independent Selection)
 
 private struct TabRowView: View {
+    static let height: CGFloat = 34
+    static let spacing: CGFloat = 3
+
     let tab: BrowserTab
     let model: BrowserModel
     @State private var isHovered = false
@@ -519,7 +517,8 @@ private struct TabRowView: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            // Main Selection Area
+            // Main Selection Area. The row's own `contentShape` below is the click target; the button's label carries
+            // a matching one so a click on the padding beside the title still selects instead of doing nothing.
             Button {
                 model.select(tab)
             } label: {
@@ -561,6 +560,8 @@ private struct TabRowView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // Fills the row up to the close button, so the whole width selects — not just the text and favicon.
+            .frame(maxWidth: .infinity)
             .accessibilityLabel("\(tab.title.isEmpty ? "New Tab" : tab.title)")
             .accessibilityAddTraits(isSelected ? [.isSelected] : [])
 
@@ -581,7 +582,7 @@ private struct TabRowView: View {
             }
         }
         .padding(.horizontal, 10)
-        .frame(height: 34)
+        .frame(height: Self.height)
         .background {
             if isSelected {
                 let activeColor = controlActiveState == .inactive ? Color.primary.opacity(0.06) : (reduceTransparency ? Color.primary.opacity(0.15) : Color.primary.opacity(0.10))

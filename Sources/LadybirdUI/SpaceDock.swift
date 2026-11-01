@@ -133,6 +133,9 @@ struct SpaceDock: View {
                             .padding(.horizontal, 4)
                             .frame(minWidth: geo.size.width, alignment: .center)
                             .animation(reduceMotion ? .none : .easeInOut(duration: 0.18), value: isRevealed)
+                            // The selected dot grows into the space's icon; animating the id makes that a morph rather
+                            // than a swap, and it is the same 0.18 as the sidebar rows it switches.
+                            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.activeWorkspace?.id)
                         }
                         .onAppear {
                             if let activeID = model.activeWorkspace?.id {
