@@ -37,6 +37,11 @@ public final class BrowserCommandRouter {
         activeModel?.openTab(url: Self.engineSettingsURL)
     }
 
+    /// Pushes the current appearance to every open page, which the app-chrome half of the setting does not reach.
+    public func applyAppearance() {
+        activeModel?.applyAppearanceToOpenTabs()
+    }
+
     public static let engineSettingsURL = "about:settings"
 
     /// Opens the engine's settings page and dismisses the Settings window that asked for it.

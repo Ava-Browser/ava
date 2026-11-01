@@ -33,6 +33,7 @@ public final class BrowserModel {
     @ObservationIgnored public let webView: PortWebView
     @ObservationIgnored private var app: PortApp?
     @ObservationIgnored private var terminationObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private var appearanceObservation: NSKeyValueObservation?
     @ObservationIgnored private var selectDropdownPresenter: SelectDropdownPresenter?
     @ObservationIgnored private let newTabURLProvider: (() -> String)?
     @ObservationIgnored private let faviconStore: FaviconStore
@@ -217,7 +218,11 @@ public final class BrowserModel {
         }
         Self.processApp = app
         self.app = app
+        // Before the first tab is created: the engine's theme buffer is fixed when a headless view is constructed, so
+        // setting it afterwards would leave the launch tab in the wrong palette for its whole life.
+        app.setTheme(dark: AppSettings.shared.appearance.resolvedIsDark)
         installWebViewCallbacks()
+        observeAppearanceChanges()
 
         if workspaceManager.workspaces.isEmpty {
             _ = workspaceManager.createWorkspace(name: "Personal", icon: "circle.fill")
@@ -517,7 +522,37 @@ public final class BrowserModel {
         }
         tab.attach(engineID: engineID)
         engineToTab[engineID] = tab.id
+        applyAppearance(to: engineID)
         return true
+    }
+
+    // MARK: - Appearance
+
+    /// Pages follow the same light/dark answer as the chrome. Two mechanisms are needed because they apply at different
+    /// times: the theme only reaches tabs created afterwards, and the color scheme is what changes an existing document.
+    private func applyAppearance(to engineID: UInt64) {
+        guard let app else { return }
+        app.setColorScheme(dark: AppSettings.shared.appearance.resolvedIsDark, in: engineID)
+    }
+
+    /// Rethemes every live tab, for the case where the setting or the system appearance changes while pages are open.
+    /// Unloaded descriptors are skipped: their engine tab does not exist yet, and rehydrating them is what applies it.
+    public func applyAppearanceToOpenTabs() {
+        guard let app else { return }
+        app.setTheme(dark: AppSettings.shared.appearance.resolvedIsDark)
+        for tab in runtimeTabs.values {
+            guard let engineID = tab.engineID else { continue }
+            applyAppearance(to: engineID)
+        }
+    }
+
+    private func observeAppearanceChanges() {
+        // `.system` resolves through NSApp's effective appearance, so the OS switching light/dark is a change too. There
+        // is no notification for it; AppKit's own guidance (NSCell.h, NSControlTintDidChangeNotification) is KVO on
+        // this property.
+        appearanceObservation = NSApp?.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.applyAppearanceToOpenTabs() }
+        }
     }
 
     public func closeTab(_ tab: BrowserTab) {
@@ -700,6 +735,8 @@ public final class BrowserModel {
             NotificationCenter.default.removeObserver(terminationObserver)
             self.terminationObserver = nil
         }
+        appearanceObservation?.invalidate()
+        appearanceObservation = nil
         app?.destroy()
         app = nil
         Self.processApp = nil

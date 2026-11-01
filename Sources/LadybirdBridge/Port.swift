@@ -460,6 +460,21 @@ public final class PortApp {
         uiCallbacksInstalled = LbAppSetUiCallbacks(handle, &group) == 1
     }
 
+    /// Which engine theme subsequently created tabs load. Tabs that already exist keep theirs — a headless view's theme
+    /// buffer is fixed at construction — so an already-open page is rethemed through `setColorScheme` instead.
+    public func setTheme(dark: Bool) {
+        guard let handle else { return }
+        LbAppSetTheme(handle, dark ? 1 : 0)
+    }
+
+    /// What an existing tab's `prefers-color-scheme` resolves to. This reaches the page, unlike `setTheme`, which only
+    /// picks the engine's own colours for tabs created afterwards.
+    public func setColorScheme(dark: Bool, in tab: UInt64) {
+        guard let handle else { return }
+        // The header's own numbering (Auto 0, Light 1, Dark 2), not the engine's enum order.
+        LbTabSetColorScheme(handle, tab, dark ? 2 : 1)
+    }
+
     /// The header's own pump driver: a `CFRunLoopTimer` in `kCFRunLoopCommonModes`, so a live resize or a held menu
     /// cannot starve the engine (R8). The host keeps its run loop.
     public func startPump(interval: Double = 0.002) {

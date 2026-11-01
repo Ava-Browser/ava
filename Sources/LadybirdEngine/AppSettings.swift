@@ -10,9 +10,11 @@ import AppKit
 import Foundation
 import Observation
 
-/// The appearance of the app chrome (window, sidebar, sheets, settings).
+/// The appearance of the app chrome (window, sidebar, sheets, settings) and of page content.
 ///
-/// Note: Page content theming in WebContent is separate and not modified by this setting.
+/// The two are separate mechanisms in the engine — `LbAppSetTheme` picks its colours for tabs created afterwards, and
+/// `LbTabSetColorScheme` changes what an existing page's `prefers-color-scheme` resolves to — but one setting drives
+/// both, because a browser with a dark window and light pages is not a preference anyone expressed.
 public enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
     case system
     case light
@@ -25,6 +27,21 @@ public enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
         case .system: "System"
         case .light: "Light"
         case .dark: "Dark"
+        }
+    }
+
+    /// The darkness the chrome resolves to right now. `.system` follows the OS, so this is the only place the two
+    /// policies differ, and pages read it through the same answer.
+    @MainActor
+    public var resolvedIsDark: Bool {
+        switch self {
+        case .system:
+            guard let appearance = NSApp?.effectiveAppearance else { return false }
+            return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        case .light:
+            return false
+        case .dark:
+            return true
         }
     }
 
@@ -147,6 +164,9 @@ public final class AppSettings {
         appearance = newAppearance
         userDefaults.set(newAppearance.rawValue, forKey: Self.appearanceKey)
         newAppearance.apply()
+        // The chrome changed through NSApp.appearance; the pages are this model's to retheme, and Settings deliberately
+        // owns no BrowserModel. Routed rather than observed so a dismissed or absent window costs nothing.
+        BrowserCommandRouter.shared.applyAppearance()
     }
 
     public func setNewTabDestinationType(_ type: NewTabDestinationType) {
