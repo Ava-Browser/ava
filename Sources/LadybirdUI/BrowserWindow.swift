@@ -76,6 +76,9 @@ public struct BrowserWindow: View {
                 }
             }
             .modifier(SpaceActionModifier(model: model, actionState: spaceActionState))
+            // The width is not persisted here on purpose: SwiftUI's NavigationSplitView already writes the column's
+            // frame to `NSSplitView Subview Frames` in the app's preferences and restores it on launch. Tracking it
+            // ourselves duplicated that and could disagree with it. `ideal` only seeds a first launch.
             .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 320)
         } detail: {
             content
@@ -107,6 +110,13 @@ public struct BrowserWindow: View {
                     homeURL: Self.launchURL,
                     overrideRestoredTab: Self.launchURLArgument != nil
                 )
+                // Settings needs a live window to open the engine's settings page; it must not make its own model.
+                // Only when this window really owns an engine: a second window trips the `processApp` guard in
+                // `start`, sets `failure` and returns, so registering it would replace a working model with a dead one
+                // and make "More settings" a no-op.
+                if model.failure == nil {
+                    BrowserCommandRouter.shared.register(model)
+                }
                 addressState.handleTabSwitch(to: model.currentURL)
             }
             .onChange(of: model.selectedTabID) { _, _ in

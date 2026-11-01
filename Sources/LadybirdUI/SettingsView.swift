@@ -3,7 +3,8 @@
  *
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Arc-inspired native macOS Settings window.
+ * The native Settings window: app-owned preferences only. Engine-owned settings (search, privacy, network, blocking,
+ * page content) live on the engine's own about:settings page, reachable from General.
  */
 
 import LadybirdEngine
@@ -12,6 +13,7 @@ import SwiftUI
 public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     case general
     case appearance
+    case browsing
     case about
 
     public var id: String { rawValue }
@@ -20,6 +22,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .general: "General"
         case .appearance: "Appearance"
+        case .browsing: "Browsing"
         case .about: "About"
         }
     }
@@ -28,6 +31,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .general: "gearshape"
         case .appearance: "paintpalette"
+        case .browsing: "sidebar.left"
         case .about: "info.circle"
         }
     }
@@ -40,27 +44,41 @@ public struct SettingsView: View {
     public init() {}
 
     public var body: some View {
-        TabView(selection: $selectedPane) {
-            GeneralSettingsPane(settings: settings)
-                .tabItem {
-                    Label(SettingsPane.general.title, systemImage: SettingsPane.general.systemImage)
-                }
-                .tag(SettingsPane.general.rawValue)
+        // A plain HStack, deliberately NOT a NavigationSplitView. A split view injects a sidebar-collapse toggle into
+        // the titlebar and makes the pane list collapsible; in Settings that toggle is a stray control that can hide
+        // the only navigation there is, and `toolbar(removing: .sidebarToggle)` did not reliably remove it. Building
+        // the two columns by hand gives the same System Settings look with nothing to collapse and no toolbar at all.
+        HStack(spacing: 0) {
+            List(SettingsPane.allCases, selection: Binding(
+                get: { SettingsPane(rawValue: selectedPane) ?? .general },
+                set: { selectedPane = $0.rawValue }
+            )) { pane in
+                Label(pane.title, systemImage: pane.systemImage)
+                    .tag(pane)
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .frame(width: 200)
 
-            AppearanceSettingsPane(settings: settings)
-                .tabItem {
-                    Label(SettingsPane.appearance.title, systemImage: SettingsPane.appearance.systemImage)
-                }
-                .tag(SettingsPane.appearance.rawValue)
+            Divider()
 
-            AboutSettingsPane()
-                .tabItem {
-                    Label(SettingsPane.about.title, systemImage: SettingsPane.about.systemImage)
+            // No pane repeats its own name as a heading — the selected sidebar row already says which pane this is,
+            // and a second copy is the kind of redundancy that makes a settings window feel busy.
+            Group {
+                switch SettingsPane(rawValue: selectedPane) ?? .general {
+                case .general: GeneralSettingsPane(settings: settings)
+                case .appearance: AppearanceSettingsPane(settings: settings)
+                case .browsing: BrowsingSettingsPane()
+                case .about: AboutSettingsPane()
                 }
-                .tag(SettingsPane.about.rawValue)
+            }
+            // A real minimum instead of a fixed size, so a validation message or a larger text size can grow the
+            // window rather than clip. `Form` scrolls itself; a ScrollView around it would fight the grouped layout.
+            .frame(minWidth: 440, maxWidth: .infinity, minHeight: 260, maxHeight: .infinity)
         }
-        .frame(width: 480, height: 280)
-        .padding(20)
+        // A minimum, not a fixed size: the window is resizable and Form scrolls. The starting size is a separate
+        // concern and lives on the scene (`Settings.defaultSize`); pinning it here would forbid the user to resize.
+        .frame(minWidth: 640, minHeight: 380)
     }
 }
 
@@ -72,6 +90,8 @@ struct GeneralSettingsPane: View {
     @State private var errorMessage: String?
 
     var body: some View {
+        // `grouped` is the System Settings layout: inset rows on the window background, no drawn boxes. Building the
+        // grouping from GroupBox instead reads as a web form dropped into a window.
         Form {
             Section {
                 Picker("New tabs open with:", selection: Binding(
@@ -87,34 +107,56 @@ struct GeneralSettingsPane: View {
                         Text(type.displayName).tag(type)
                     }
                 }
-                .pickerStyle(.radioGroup)
+                .pickerStyle(.segmented)
 
                 if settings.newTabDestinationType == .custom {
-                    VStack(alignment: .leading, spacing: 6) {
+                    LabeledContent("Address") {
                         HStack(spacing: 8) {
                             TextField("URL", text: $customURLInput)
                                 .textFieldStyle(.roundedBorder)
+                                .labelsHidden()
                                 .onSubmit { commitCustomURL() }
                                 .accessibilityLabel("Custom New Tab URL")
 
-                            Button("Save") {
-                                commitCustomURL()
-                            }
-                            .disabled(customURLInput.trimmingCharacters(in: .whitespacesAndNewlines) == settings.customNewTabURL)
+                            Button("Save") { commitCustomURL() }
+                                .disabled(customURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    == settings.customNewTabURL)
                         }
+                    }
 
-                        if let errorMessage {
-                            Text(errorMessage)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .accessibilityLabel("Validation Error: \(errorMessage)")
-                        }
-
+                    // Inline, under the field it belongs to, not as a modal — Apple's "validate inline, not on submit".
+                    if let errorMessage {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .accessibilityLabel("Validation Error: \(errorMessage)")
+                    } else {
                         Text("Supports http://, https://, or about:blank.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.leading, 20)
+                }
+            } header: {
+                Text("New tabs")
+            }
+
+            // The rest of the settings surface belongs to the engine. Linking out keeps one copy of each value, which
+            // is the point: a native mirror could disagree with what the engine actually uses.
+            Section {
+                LabeledContent {
+                    Button("Open about:settings…") {
+                        BrowserCommandRouter.shared.openEngineSettingsAndDismissSettingsWindow()
+                    }
+                    .accessibilityLabel("Open engine settings page")
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("More settings")
+                        Text("Search provider, privacy, website data, network and content blocking are owned by the web "
+                            + "engine.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
@@ -144,7 +186,7 @@ struct AppearanceSettingsPane: View {
     var body: some View {
         Form {
             Section {
-                Picker("App appearance:", selection: Binding(
+                Picker("Appearance:", selection: Binding(
                     get: { settings.appearance },
                     set: { settings.setAppearance($0) }
                 )) {
@@ -152,11 +194,72 @@ struct AppearanceSettingsPane: View {
                         Text(item.displayName).tag(item)
                     }
                 }
-                .pickerStyle(.radioGroup)
+                .pickerStyle(.segmented)
+            } header: {
+                Text("App")
+            } footer: {
+                Text("Applies to the browser window, sidebar, and settings chrome.")
+            }
 
-                Text("Applies to the browser window, sidebar, and settings chrome. Website content theme is controlled by the engine.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            // Not wired up: the engine controls page theming, and there is no native surface for the per-site half yet.
+            // Shown disabled so the gap is visible rather than a surprise.
+            Section {
+                LabeledContent {
+                    // Plain text, not a disabled bordered button: a greyed button still reads as "this is the action
+                    // here", which is worse than saying plainly that the control does not exist yet.
+                    Text("Not available yet")
+                        .foregroundStyle(.tertiary)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Website appearance")
+                        Text("Pages follow their own theme. Forcing a dark theme per site is controlled by the engine.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Browsing Pane
+
+struct BrowsingSettingsPane: View {
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Sidebar width") {
+                    Text("Remembered automatically")
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Sidebar")
+            } footer: {
+                Text("Drag the sidebar edge to resize it; the width is kept for next time.")
+            }
+
+            // Reserved for behaviour that needs engine support Ava does not have yet. Disabled on purpose: the layout
+            // is designed now, and each control lights up when the capability lands. Kept to the controls that are
+            // actually planned rather than a wall of dead switches.
+            Section {
+                Toggle("Restore previous windows and tabs at launch", isOn: .constant(false))
+                    .disabled(true)
+                Toggle("Close the window when the last tab closes", isOn: .constant(true))
+                    .disabled(true)
+                LabeledContent("Default page zoom") {
+                    Picker("", selection: .constant(1.0)) {
+                        Text("100%").tag(1.0)
+                    }
+                    .labelsHidden()
+                    .frame(width: 100)
+                    .disabled(true)
+                }
+            } header: {
+                Text("Behaviour")
+            } footer: {
+                Text("These are not available yet.")
             }
         }
         .formStyle(.grouped)
@@ -174,43 +277,33 @@ struct AboutSettingsPane: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            // The bundle icon arrives through the engine: AppKit is not this target's to touch.
+        // Not a Form. About has no rows to lay out, and a grouped Section around a single centered block stretches
+        // its grey background across the whole pane, which reads as a huge empty card rather than an identity panel.
+        VStack(spacing: 6) {
             if let icon = AppIcon.image {
+                // The asset carries its own transparent margin (the 824-in-1024 macOS icon grid), so the visible
+                // plate is about 80% of this.
                 icon
                     .resizable()
+                    .interpolation(.high)
                     .scaledToFit()
-                    .frame(width: 64, height: 64)
+                    .frame(width: 128, height: 128)
                     .accessibilityHidden(true)
+                    .padding(.bottom, 6)
             }
-
             Text("Ava")
                 .font(.title2.bold())
-
             Text(versionString)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-
-            Text("Powered by the Ladybird web engine.")
-                .font(.subheadline)
-
-            Link("ladybird.org", destination: URL(string: "https://ladybird.org")!)
-                .font(.footnote)
-
-            Divider()
-                .padding(.vertical, 4)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("• Mac frontend: BSD 2-Clause License")
-                Text("• Ladybird engine: BSD 2-Clause License")
-                Text("• Third-party dependencies: Licensed under their respective open-source licenses (BSD, Apache 2.0, MIT, zlib, and others). See repository for complete notices.")
+            HStack(spacing: 4) {
+                Text("Powered by the Ladybird web engine.")
+                Link("ladybird.org", destination: URL(string: "https://ladybird.org")!)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 8)
+            .font(.subheadline)
+            .padding(.top, 2)
         }
+        // Centred in the pane, which is the macOS About convention and removes the top-anchored dead space.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, 16)
     }
 }

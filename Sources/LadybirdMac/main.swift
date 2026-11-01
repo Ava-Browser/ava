@@ -29,6 +29,8 @@ struct AvaApp: App {
         Settings {
             SettingsView()
         }
+        // The starting size only. The view sets its own minimum, so this stays resizable.
+        .defaultSize(width: 700, height: 440)
     }
 }
 
