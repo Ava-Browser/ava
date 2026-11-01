@@ -29,6 +29,12 @@ struct CrashStateTests {
         return (BrowserModel(store: store), store)
     }
 
+    /// A restored descriptor has no engine tab, and every handler keys on the engine's id.
+    private func adopt(_ model: BrowserModel, engineID: UInt64, activate: Bool = true) throws -> BrowserTab {
+        let parent = try #require(model.selectedTab)
+        return try #require(model.adoptEngineTab(parent: parent, engineID: engineID, activate: activate))
+    }
+
     /// The overlay is per-tab and must not become a window-wide flag: a background tab crashing while the user reads
     /// another page is not something to interrupt them with, and clearing it there would hide a live tab's overlay.
     @Test("A crash marks only the tab it reported")
@@ -36,14 +42,13 @@ struct CrashStateTests {
         let (model, store) = makeModel()
         defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
 
-        let parent = try #require(model.selectedTab)
-        let background = try #require(model.adoptEngineTab(parent: parent, engineID: 42, activate: false))
-        model.select(parent, force: true)
+        let visible = try adopt(model, engineID: 41)
+        let background = try adopt(model, engineID: 42, activate: false)
 
         model.setCrashed(true, on: 42)
 
         #expect(background.isCrashed)
-        #expect(model.selectedTab?.isCrashed == false)
+        #expect(visible.isCrashed == false)
         #expect(model.isCrashed == false)
     }
 
@@ -51,12 +56,12 @@ struct CrashStateTests {
     func crashReachesChrome() throws {
         let (model, store) = makeModel()
         defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
-        let parent = try #require(model.selectedTab)
+        let tab = try adopt(model, engineID: 42)
 
-        model.setCrashed(true, on: try #require(parent.engineID))
+        model.setCrashed(true, on: 42)
 
         #expect(model.isCrashed)
-        #expect(model.selectedTab?.isCrashed == true)
+        #expect(tab.isCrashed)
     }
 
     /// An id the model never registered is an engine tab it does not own. Touching any tab then would mark an unrelated
@@ -65,23 +70,23 @@ struct CrashStateTests {
     func unknownEngineTabIsIgnored() throws {
         let (model, store) = makeModel()
         defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
-        let parent = try #require(model.selectedTab)
+        let tab = try adopt(model, engineID: 42)
 
         model.setCrashed(true, on: 999_999)
 
         #expect(model.isCrashed == false)
-        #expect(parent.isCrashed == false)
+        #expect(tab.isCrashed == false)
     }
 
     @Test("The engine's overlay state is authoritative in both directions")
     func overlayStateBothWays() throws {
         let (model, store) = makeModel()
         defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
-        let engineID = try #require(model.selectedTab?.engineID)
+        try adopt(model, engineID: 42)
 
-        model.setCrashed(true, on: engineID)
+        model.setCrashed(true, on: 42)
         #expect(model.isCrashed)
-        model.setCrashed(false, on: engineID)
+        model.setCrashed(false, on: 42)
         #expect(model.isCrashed == false)
     }
 
@@ -90,9 +95,9 @@ struct CrashStateTests {
     func detachClearsCrash() throws {
         let (model, store) = makeModel()
         defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
-        let tab = try #require(model.selectedTab)
+        let tab = try adopt(model, engineID: 42)
 
-        model.setCrashed(true, on: try #require(tab.engineID))
+        model.setCrashed(true, on: 42)
         tab.detach()
 
         #expect(tab.isCrashed == false)

@@ -218,10 +218,17 @@ public struct BrowserWindow: View {
         } else if isShowingStartPage {
             StartPageView(model: model)
         } else {
-            WebContentView(webView: model.webView)
-                .overlay {
-                    if model.isCrashed { CrashOverlayView(model: model) }
+            VStack(spacing: 0) {
+                WebContentView(webView: model.webView)
+                    .overlay {
+                        if model.isCrashed { CrashOverlayView(model: model) }
+                    }
+                // A status strip takes space only while there is something to say: `if` around the label, not a
+                // fixed-height bar, so a page does not lose 20 pt to an empty row.
+                if let hovered = model.hoveredLink {
+                    HoveredLinkStrip(url: hovered)
                 }
+            }
         }
     }
 

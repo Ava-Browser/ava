@@ -23,6 +23,9 @@ public final class BrowserModel {
     public private(set) var canGoForward = false
     public var addressText = ""
     public var focusAddressRequested = false
+    /// The URL under the pointer, shown in the status strip. Kept on the model rather than the tab because only the
+    /// selected tab is on screen, and it must not survive the switch that makes a different page visible.
+    public private(set) var hoveredLink: String?
     public private(set) var failure: String?
 
     @ObservationIgnored private static var processApp: PortApp?
@@ -116,6 +119,40 @@ public final class BrowserModel {
             MainActor.assumeIsolated {
                 guard let self, engineID == self.selectedTab?.engineID else { return }
                 self.webView.applyCursor(cursor)
+            }
+        }
+        // The URL under the pointer. Only the selected tab's hover is on screen, and a background tab's would be a
+        // destination the user is not pointing at.
+        ui.onLinkHover = { [weak self] engineID, url in
+            MainActor.assumeIsolated { self?.handleLinkHover(engineID, url) }
+        }
+        ui.onLinkUnhover = { [weak self] engineID in
+            MainActor.assumeIsolated { self?.handleLinkUnhover(engineID) }
+        }
+        // Tooltips. `title=` areas and page-requested overrides both land in the same slot, because the view has one
+        // tooltip: the last request is what the pointer is over, and the matching stop/leave clears it.
+        ui.onEnterTooltipArea = { [weak self] engineID, text in
+            MainActor.assumeIsolated {
+                guard let self, engineID == self.selectedTab?.engineID else { return }
+                self.webView.applyTooltip(text)
+            }
+        }
+        ui.onLeaveTooltipArea = { [weak self] engineID in
+            MainActor.assumeIsolated {
+                guard let self, engineID == self.selectedTab?.engineID else { return }
+                self.webView.applyTooltip(nil)
+            }
+        }
+        ui.onTooltipOverride = { [weak self] engineID, _, _, text in
+            MainActor.assumeIsolated {
+                guard let self, engineID == self.selectedTab?.engineID else { return }
+                self.webView.applyTooltip(text)
+            }
+        }
+        ui.onStopTooltipOverride = { [weak self] engineID in
+            MainActor.assumeIsolated {
+                guard let self, engineID == self.selectedTab?.engineID else { return }
+                self.webView.applyTooltip(nil)
             }
         }
 
@@ -446,6 +483,9 @@ public final class BrowserModel {
             answerPendingDialog(on: leaving)
             cancelSelectDropdown()
         }
+        // Both hover affordances belong to the page that was showing, so they leave with it. Neither gets a leave
+        // notification when the tab is switched out underneath the pointer.
+        clearHoverFeedback()
 
         workspaceManager.selectTab(tab.id)
         let wasUnloaded = tab.engineID == nil
@@ -708,8 +748,9 @@ public final class BrowserModel {
     /// otherwise retain every icon it ever saw. Cheap because the bound is the tab count, not history length.
     private var faviconCache: [String: NSImage] = [:]
 
-    private func handleURLChange(_ engineID: UInt64, _ url: String) {
+    func handleURLChange(_ engineID: UInt64, _ url: String) {
         guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
+        if id == selectedTabID { clearHoverFeedback() }
         tab.update(url: url)
         workspaceManager.updateTab(id, url: url, title: tab.title, faviconRef: tab.faviconRef)
         if id == selectedTabID {
@@ -743,7 +784,10 @@ public final class BrowserModel {
     func handleLoadStart(_ engineID: UInt64) {
         guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
         tab.setLoading(true)
-        if id == selectedTabID { refreshHistoryAvailability() }
+        guard id == selectedTabID else { return }
+        // Whatever was hovered belongs to the document being replaced.
+        clearHoverFeedback()
+        refreshHistoryAvailability()
     }
 
     /// The URL itself still arrives through `onURLChange`: the commit carries none, and the ABI has no URL getter. What
@@ -753,6 +797,23 @@ public final class BrowserModel {
         // A committed document is a live renderer, so a crash overlay from the previous one is stale.
         tab.setCrashed(false)
         if id == selectedTabID { refreshHistoryAvailability() }
+    }
+
+    func handleLinkHover(_ engineID: UInt64, _ url: String) {
+        guard engineID == selectedTab?.engineID else { return }
+        hoveredLink = url
+    }
+
+    func handleLinkUnhover(_ engineID: UInt64) {
+        guard engineID == selectedTab?.engineID else { return }
+        hoveredLink = nil
+    }
+
+    /// Drops the hovered-URL label and the page's tooltip together: they are the same gesture's two halves, and either
+    /// one left behind describes an element the pointer is no longer over.
+    func clearHoverFeedback() {
+        hoveredLink = nil
+        webView.applyTooltip(nil)
     }
 
     func setCrashed(_ crashed: Bool, on engineID: UInt64) {

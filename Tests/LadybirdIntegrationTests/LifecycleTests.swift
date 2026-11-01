@@ -29,6 +29,12 @@ struct NavigationLifecycleTests {
         return (BrowserModel(store: store), store)
     }
 
+    /// A restored descriptor has no engine tab, and every handler keys on the engine's id.
+    private func adopt(_ model: BrowserModel, engineID: UInt64) throws -> BrowserTab {
+        let parent = try #require(model.selectedTab)
+        return try #require(model.adoptEngineTab(parent: parent, engineID: engineID, activate: true))
+    }
+
     /// The point of wiring `on_load_start` at all: the spinner and the stop button have to appear on the click, not once
     /// the load state catches up. A tab that is loading before its first frame is also what makes the reload control
     /// offer "stop" during a slow navigation.
@@ -36,10 +42,10 @@ struct NavigationLifecycleTests {
     func loadStartMarksLoading() throws {
         let (model, store) = makeModel()
         defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
-        let engineID = try #require(model.selectedTab?.engineID)
+        try adopt(model, engineID: 42)
 
         #expect(model.isLoading == false)
-        model.handleLoadStart(engineID)
+        model.handleLoadStart(42)
         #expect(model.isLoading)
     }
 
@@ -49,13 +55,14 @@ struct NavigationLifecycleTests {
     func commitWithoutURLChange() throws {
         let (model, store) = makeModel()
         defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
-        let tab = try #require(model.selectedTab)
-        let engineID = try #require(tab.engineID)
+        let tab = try adopt(model, engineID: 42)
 
-        model.handleLoadStart(engineID)
-        model.handleTopLevelNavigationCommit(engineID)
+        model.handleLoadStart(42)
+        model.handleURLChange(42, "https://redirected.example/final")
+        model.handleTopLevelNavigationCommit(42)
 
-        #expect(model.selectedTab?.currentURL == "https://example.com")
+        #expect(model.selectedTab?.currentURL == "https://redirected.example/final")
+        #expect(tab.currentURL == "https://redirected.example/final")
     }
 
     /// A crashed renderer that commits a new document is alive again. Leaving the overlay up would tell the user a
@@ -64,12 +71,12 @@ struct NavigationLifecycleTests {
     func commitClearsCrash() throws {
         let (model, store) = makeModel()
         defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
-        let engineID = try #require(model.selectedTab?.engineID)
+        try adopt(model, engineID: 42)
 
-        model.setCrashed(true, on: engineID)
+        model.setCrashed(true, on: 42)
         #expect(model.isCrashed)
 
-        model.handleTopLevelNavigationCommit(engineID)
+        model.handleTopLevelNavigationCommit(42)
         #expect(model.isCrashed == false)
     }
 
