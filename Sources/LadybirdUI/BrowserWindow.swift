@@ -111,7 +111,12 @@ public struct BrowserWindow: View {
                     overrideRestoredTab: Self.launchURLArgument != nil
                 )
                 // Settings needs a live window to open the engine's settings page; it must not make its own model.
-                BrowserCommandRouter.shared.register(model)
+                // Only when this window really owns an engine: a second window trips the `processApp` guard in
+                // `start`, sets `failure` and returns, so registering it would replace a working model with a dead one
+                // and make "More settings" a no-op.
+                if model.failure == nil {
+                    BrowserCommandRouter.shared.register(model)
+                }
                 addressState.handleTabSwitch(to: model.currentURL)
             }
             .onChange(of: model.selectedTabID) { _, _ in
