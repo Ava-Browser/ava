@@ -100,9 +100,14 @@ public struct PortPageCallbacks {
     /// A navigation in `tab` started. The other half is `PortCallbacks.onLoadFinish`. It carries no URL: the engine has
     /// not resolved one yet at this point, so the address still arrives through `onURLChange`.
     public var onLoadStart: ((UInt64) -> Void)?
-    /// A top-level navigation's document committed in `tab`. Also URL-less; it means the engine's history and
-    /// back/forward actions are now the new document's.
+    /// A top-level navigation's document committed in `tab`. Also URL-less. It fires from the engine's
+    /// `did_activate_history_entry`, which is *before* `update_navigation_action_state`, so the engine's back/forward
+    /// actions still describe the previous document here — re-read them from `onHistoryTraversalComplete` or
+    /// `onLoadFinish` instead.
     public var onTopLevelNavigationCommit: ((UInt64) -> Void)?
+    /// A back/forward traversal finished in `tab`, committed or cancelled. The engine's history bookkeeping is complete
+    /// by now, so this is where back/forward availability may be re-read.
+    public var onHistoryTraversalComplete: ((UInt64) -> Void)?
     /// The renderer process for `tab` died. `reason` is a `WebContentCrashReason` ordinal: 0 process crash, 1 rejected IPC.
     /// Notifications only — they never block the page, so a host that ignores them is left showing a dead frame.
     public var onWebContentCrashed: ((UInt64, Int32) -> Void)?
@@ -384,6 +389,11 @@ public final class PortApp {
         group.on_top_level_navigation_commit = { raw, tab in
             guard let context = CallbackContext.resolve(raw) else { return }
             let callback = context.page.onTopLevelNavigationCommit
+            MainActor.assumeIsolated { callback?(tab) }
+        }
+        group.on_history_traversal_complete = { raw, tab in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onHistoryTraversalComplete
             MainActor.assumeIsolated { callback?(tab) }
         }
         group.on_web_content_crashed = { raw, tab, reason in

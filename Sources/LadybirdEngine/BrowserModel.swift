@@ -184,6 +184,10 @@ public final class BrowserModel {
         page.onTopLevelNavigationCommit = { [weak self] engineID in
             MainActor.assumeIsolated { self?.handleTopLevelNavigationCommit(engineID) }
         }
+        // The only point at which the engine's back/forward actions are known to be up to date after a traversal.
+        page.onHistoryTraversalComplete = { [weak self] engineID in
+            MainActor.assumeIsolated { self?.handleHistoryTraversalComplete(engineID) }
+        }
         page.onWebContentCrashed = { [weak self] engineID, _ in
             MainActor.assumeIsolated { self?.setCrashed(true, on: engineID) }
         }
@@ -827,12 +831,24 @@ public final class BrowserModel {
         refreshHistoryAvailability()
     }
 
-    /// The URL itself still arrives through `onURLChange`: the commit carries none, and the ABI has no URL getter. What
-    /// is only knowable here is that the engine's history now belongs to the new document.
+    /// The URL itself still arrives through `onURLChange`: the commit carries none, and the ABI has no URL getter.
     func handleTopLevelNavigationCommit(_ engineID: UInt64) {
         guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
-        // A committed document is a live renderer, so a crash overlay from the previous one is stale.
+        // A committed document is a live renderer, so a crash overlay from the previous one is stale. Defensive: the
+        // engine also clears it from `did_accept_presented_backing_store` via `on_crash_overlay_state_change`, which is
+        // the authoritative switch. This covers a tab whose recovery never re-presents a paint.
         tab.setCrashed(false)
+        // Deliberately no `refreshHistoryAvailability()`: the engine fires this from `did_activate_history_entry`, and
+        // `navigate_back_action`/`navigate_forward_action` are only rewritten afterwards, by
+        // `update_navigation_action_state` from `finish_history_operation`. Reading them here returns the previous
+        // document's actions. `onLoadFinish` and `onHistoryTraversalComplete` are the callbacks that run after the
+        // bookkeeping, and they are what refresh the buttons.
+    }
+
+    /// A back/forward traversal finished, committed or cancelled. This is the only signal that the engine's own
+    /// history bookkeeping is complete, so it is where the buttons may be re-read.
+    func handleHistoryTraversalComplete(_ engineID: UInt64) {
+        guard let id = engineToTab[engineID] else { return }
         if id == selectedTabID { refreshHistoryAvailability() }
     }
 

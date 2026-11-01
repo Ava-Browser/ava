@@ -153,10 +153,12 @@ struct AppearanceResolutionTests {
     /// `.system` is the only case that can disagree with the setting, and its answer has to match what the chrome is
     /// actually drawing — which is NSApp's effective appearance, not the OS preference, because the app can override it.
     @Test("The system policy follows the app's effective appearance, not a guess")
-    func systemPolicyFollowsEffectiveAppearance() {
-        let original = NSApp?.appearance
-        defer { NSApp?.appearance = original }
-        guard let app = NSApp else { return }
+    func systemPolicyFollowsEffectiveAppearance() throws {
+        // `NSApplication.shared`, not `NSApp`: the latter is nil until something touches the shared instance, so a
+        // filtered run that skipped the view-hosting test would make this pass while asserting nothing.
+        let app = NSApplication.shared
+        let original = app.appearance
+        defer { app.appearance = original }
 
         app.appearance = NSAppearance(named: .darkAqua)
         #expect(AppAppearance.system.resolvedIsDark == true)

@@ -87,6 +87,7 @@ struct NavigationLifecycleTests {
 
         model.handleLoadStart(999_999)
         model.handleTopLevelNavigationCommit(999_999)
+        model.handleHistoryTraversalComplete(999_999)
 
         #expect(model.isLoading == false)
         #expect(model.selectedTab?.isCrashed == false)

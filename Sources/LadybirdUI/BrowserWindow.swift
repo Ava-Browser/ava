@@ -218,17 +218,19 @@ public struct BrowserWindow: View {
         } else if isShowingStartPage {
             StartPageView(model: model)
         } else {
-            VStack(spacing: 0) {
-                WebContentView(webView: model.webView)
-                    .overlay {
-                        if model.isCrashed { CrashOverlayView(model: model) }
-                    }
-                // A status strip takes space only while there is something to say: `if` around the label, not a
-                // fixed-height bar, so a page does not lose 20 pt to an empty row.
-                if let hovered = model.hoveredLink {
-                    HoveredLinkStrip(url: hovered)
+            WebContentView(webView: model.webView)
+                .overlay {
+                    if model.isCrashed { CrashOverlayView(model: model) }
                 }
-            }
+                // An overlay, never a row in a stack: a strip that took layout space would resize the web view every
+                // time the pointer entered a link, and PortWebView.layout() reports that bounds change to the engine,
+                // which relayouts and repaints the whole document on every hover. The page must not move under the
+                // pointer that is hovering it.
+                .overlay(alignment: .bottom) {
+                    if let hovered = model.hoveredLink {
+                        HoveredLinkStrip(url: hovered)
+                    }
+                }
         }
     }
 

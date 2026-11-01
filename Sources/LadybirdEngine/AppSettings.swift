@@ -164,8 +164,10 @@ public final class AppSettings {
         appearance = newAppearance
         userDefaults.set(newAppearance.rawValue, forKey: Self.appearanceKey)
         newAppearance.apply()
-        // The chrome changed through NSApp.appearance; the pages are this model's to retheme, and Settings deliberately
-        // owns no BrowserModel. Routed rather than observed so a dismissed or absent window costs nothing.
+        // The chrome changed through NSApp.appearance, and assigning it also fires the KVO observer each model installed
+        // on `effectiveAppearance`, so pages are usually rethemed before this line runs. This is the belt to that
+        // braces: the KVO path is what an OS light/dark switch under `.system` travels, and this one is what still
+        // works if a model's observer was never installed (no NSApp at init). Both are idempotent.
         BrowserCommandRouter.shared.applyAppearance()
     }
 
