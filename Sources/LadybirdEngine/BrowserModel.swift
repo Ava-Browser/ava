@@ -179,8 +179,9 @@ public final class BrowserModel {
         page.onLoadStart = { [weak self] engineID in
             MainActor.assumeIsolated { self?.handleLoadStart(engineID) }
         }
-        // The document the tab runs has changed. `onURLChange` covers the address bar for in-page and redirect updates,
-        // but it is also suppressed when the URL did not change, so history availability has to be refreshed here.
+        // The document the tab runs has changed. Deliberately not a place to re-read history availability: the engine
+        // fires this before it rewrites its own back/forward actions. `onHistoryTraversalComplete` and `onLoadFinish`
+        // are the callbacks that run after that bookkeeping.
         page.onTopLevelNavigationCommit = { [weak self] engineID in
             MainActor.assumeIsolated { self?.handleTopLevelNavigationCommit(engineID) }
         }
@@ -828,7 +829,6 @@ public final class BrowserModel {
         guard id == selectedTabID else { return }
         // Whatever was hovered belongs to the document being replaced.
         clearHoverFeedback()
-        refreshHistoryAvailability()
     }
 
     /// The URL itself still arrives through `onURLChange`: the commit carries none, and the ABI has no URL getter.
