@@ -471,8 +471,9 @@ public final class PortApp {
     /// picks the engine's own colours for tabs created afterwards.
     public func setColorScheme(dark: Bool, in tab: UInt64) {
         guard let handle else { return }
-        // The header's own numbering (Auto 0, Light 1, Dark 2), not the engine's enum order.
-        LbTabSetColorScheme(handle, tab, dark ? 2 : 1)
+        // Named cases, not literals: this is the header's own numbering (auto, light, dark), which deliberately differs
+        // from the engine enum's order, so a number here would silently turn dark pages light after an upstream sync.
+        LbTabSetColorScheme(handle, tab, Int32(dark ? LbPreferredColorSchemeDark.rawValue : LbPreferredColorSchemeLight.rawValue))
     }
 
     /// The header's own pump driver: a `CFRunLoopTimer` in `kCFRunLoopCommonModes`, so a live resize or a held menu
