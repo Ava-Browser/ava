@@ -23,6 +23,9 @@ public final class BrowserModel {
     public private(set) var canGoForward = false
     public var addressText = ""
     public var focusAddressRequested = false
+    /// The URL under the pointer, shown in the status strip. Kept on the model rather than the tab because only the
+    /// selected tab is on screen, and it must not survive the switch that makes a different page visible.
+    public private(set) var hoveredLink: String?
     public private(set) var failure: String?
 
     @ObservationIgnored private static var processApp: PortApp?
@@ -30,6 +33,7 @@ public final class BrowserModel {
     @ObservationIgnored public let webView: PortWebView
     @ObservationIgnored private var app: PortApp?
     @ObservationIgnored private var terminationObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private var appearanceObservation: NSKeyValueObservation?
     @ObservationIgnored private var selectDropdownPresenter: SelectDropdownPresenter?
     @ObservationIgnored private let newTabURLProvider: (() -> String)?
     @ObservationIgnored private let faviconStore: FaviconStore
@@ -57,6 +61,8 @@ public final class BrowserModel {
     public var selectedTab: BrowserTab? { selectedTabID.flatMap { runtimeTabs[$0] } }
     public var currentURL: String { selectedTab?.currentURL ?? "" }
     public var isLoading: Bool { selectedTab?.isLoading ?? false }
+    /// The selected tab's renderer is gone. Its last frame stays attached to the view, so the chrome has to say so.
+    public var isCrashed: Bool { selectedTab?.isCrashed ?? false }
 
     public var essentialTabs: [BrowserTab] { runtime(for: workspaceManager.tabs(in: .essential)) }
     public var pinnedTabs: [BrowserTab] { runtime(for: workspaceManager.tabs(in: .pinned)) }
@@ -116,6 +122,40 @@ public final class BrowserModel {
                 self.webView.applyCursor(cursor)
             }
         }
+        // The URL under the pointer. Only the selected tab's hover is on screen, and a background tab's would be a
+        // destination the user is not pointing at.
+        ui.onLinkHover = { [weak self] engineID, url in
+            MainActor.assumeIsolated { self?.handleLinkHover(engineID, url) }
+        }
+        ui.onLinkUnhover = { [weak self] engineID in
+            MainActor.assumeIsolated { self?.handleLinkUnhover(engineID) }
+        }
+        // Tooltips. `title=` areas and page-requested overrides both land in the same slot, because the view has one
+        // tooltip: the last request is what the pointer is over, and the matching stop/leave clears it.
+        ui.onEnterTooltipArea = { [weak self] engineID, text in
+            MainActor.assumeIsolated {
+                guard let self, engineID == self.selectedTab?.engineID else { return }
+                self.webView.applyTooltip(text)
+            }
+        }
+        ui.onLeaveTooltipArea = { [weak self] engineID in
+            MainActor.assumeIsolated {
+                guard let self, engineID == self.selectedTab?.engineID else { return }
+                self.webView.applyTooltip(nil)
+            }
+        }
+        ui.onTooltipOverride = { [weak self] engineID, _, _, text in
+            MainActor.assumeIsolated {
+                guard let self, engineID == self.selectedTab?.engineID else { return }
+                self.webView.applyTooltip(text)
+            }
+        }
+        ui.onStopTooltipOverride = { [weak self] engineID in
+            MainActor.assumeIsolated {
+                guard let self, engineID == self.selectedTab?.engineID else { return }
+                self.webView.applyTooltip(nil)
+            }
+        }
 
         var page = PortPageCallbacks()
         page.onNewTab = { [weak self] parentEngineID, newEngineID, activate, _ in
@@ -132,6 +172,30 @@ public final class BrowserModel {
         }
         page.onTabClosed = { [weak self] engineID in
             MainActor.assumeIsolated { self?.handleEngineClosedTab(engineID) }
+        }
+        // The first moment of a navigation. `onLoadingStateChange` is not that moment — it follows the engine's load
+        // state, which a fresh navigation enters only after its command reaches WebContent, so the spinner and the stop
+        // button would lag every click on a link.
+        page.onLoadStart = { [weak self] engineID in
+            MainActor.assumeIsolated { self?.handleLoadStart(engineID) }
+        }
+        // The document the tab runs has changed. Deliberately not a place to re-read history availability: the engine
+        // fires this before it rewrites its own back/forward actions. `onHistoryTraversalComplete` and `onLoadFinish`
+        // are the callbacks that run after that bookkeeping.
+        page.onTopLevelNavigationCommit = { [weak self] engineID in
+            MainActor.assumeIsolated { self?.handleTopLevelNavigationCommit(engineID) }
+        }
+        // The only point at which the engine's back/forward actions are known to be up to date after a traversal.
+        page.onHistoryTraversalComplete = { [weak self] engineID in
+            MainActor.assumeIsolated { self?.handleHistoryTraversalComplete(engineID) }
+        }
+        page.onWebContentCrashed = { [weak self] engineID, _ in
+            MainActor.assumeIsolated { self?.setCrashed(true, on: engineID) }
+        }
+        // The engine keeps driving this after a reload, so it is the authoritative on/off switch for the overlay;
+        // `onWebContentCrashed` is what arrives first and is the only signal for a tab the engine never re-overlays.
+        page.onCrashOverlayStateChange = { [weak self] engineID, active in
+            MainActor.assumeIsolated { self?.setCrashed(active, on: engineID) }
         }
 
         var picker = PortPickerCallbacks()
@@ -159,7 +223,11 @@ public final class BrowserModel {
         }
         Self.processApp = app
         self.app = app
+        // Before the first tab is created: the engine's theme buffer is fixed when a headless view is constructed, so
+        // setting it afterwards would leave the launch tab in the wrong palette for its whole life.
+        app.setTheme(dark: AppSettings.shared.appearance.resolvedIsDark)
         installWebViewCallbacks()
+        observeAppearanceChanges()
 
         if workspaceManager.workspaces.isEmpty {
             _ = workspaceManager.createWorkspace(name: "Personal", icon: "circle.fill")
@@ -425,6 +493,9 @@ public final class BrowserModel {
             answerPendingDialog(on: leaving)
             cancelSelectDropdown()
         }
+        // Both hover affordances belong to the page that was showing, so they leave with it. Neither gets a leave
+        // notification when the tab is switched out underneath the pointer.
+        clearHoverFeedback()
 
         workspaceManager.selectTab(tab.id)
         let wasUnloaded = tab.engineID == nil
@@ -456,7 +527,37 @@ public final class BrowserModel {
         }
         tab.attach(engineID: engineID)
         engineToTab[engineID] = tab.id
+        applyAppearance(to: engineID)
         return true
+    }
+
+    // MARK: - Appearance
+
+    /// Pages follow the same light/dark answer as the chrome. Two mechanisms are needed because they apply at different
+    /// times: the theme only reaches tabs created afterwards, and the color scheme is what changes an existing document.
+    private func applyAppearance(to engineID: UInt64) {
+        guard let app else { return }
+        app.setColorScheme(dark: AppSettings.shared.appearance.resolvedIsDark, in: engineID)
+    }
+
+    /// Rethemes every live tab, for the case where the setting or the system appearance changes while pages are open.
+    /// Unloaded descriptors are skipped: their engine tab does not exist yet, and rehydrating them is what applies it.
+    public func applyAppearanceToOpenTabs() {
+        guard let app else { return }
+        app.setTheme(dark: AppSettings.shared.appearance.resolvedIsDark)
+        for tab in runtimeTabs.values {
+            guard let engineID = tab.engineID else { continue }
+            applyAppearance(to: engineID)
+        }
+    }
+
+    private func observeAppearanceChanges() {
+        // `.system` resolves through NSApp's effective appearance, so the OS switching light/dark is a change too. There
+        // is no notification for it; AppKit's own guidance (NSCell.h, NSControlTintDidChangeNotification) is KVO on
+        // this property.
+        appearanceObservation = NSApp?.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.applyAppearanceToOpenTabs() }
+        }
     }
 
     public func closeTab(_ tab: BrowserTab) {
@@ -586,9 +687,29 @@ public final class BrowserModel {
         pasteboard.setString(currentURL, forType: .string)
     }
 
-    public func reload() {
+    /// Reloads the selected tab through the engine rather than re-navigating its URL, so history and the cache behave.
+    public func reload(bypassCache: Bool = false) {
         guard let selectedTab, !selectedTab.currentURL.isEmpty else { return }
-        load(selectedTab.currentURL, in: selectedTab)
+        let wasUnloaded = selectedTab.engineID == nil
+        guard let app, rehydrate(selectedTab), let engineID = selectedTab.engineID else { return }
+        guard !wasUnloaded else {
+            // An unloaded descriptor has no document to reload, so its first activation is an ordinary navigation. The
+            // viewport has to reach the new engine tab before that navigation, not after its first wrong-sized paint.
+            if selectedTab.id == selectedTabID { webView.reportViewportAfterTabCreation() }
+            load(selectedTab.currentURL, in: selectedTab)
+            return
+        }
+        // A reload is the one gesture a crashed tab offers, and it is also what revives it, so clear the overlay here
+        // rather than waiting for an engine notification that may not come.
+        selectedTab.setCrashed(false)
+        app.reload(in: engineID, bypassCache: bypassCache)
+        selectedTab.setLoading(true)
+    }
+
+    public func stopLoading() {
+        guard let app, let engineID = selectedTab?.engineID else { return }
+        app.stopLoading(in: engineID)
+        selectedTab?.setLoading(false)
     }
 
     public func load(_ input: String) {
@@ -619,6 +740,8 @@ public final class BrowserModel {
             NotificationCenter.default.removeObserver(terminationObserver)
             self.terminationObserver = nil
         }
+        appearanceObservation?.invalidate()
+        appearanceObservation = nil
         app?.destroy()
         app = nil
         Self.processApp = nil
@@ -667,8 +790,9 @@ public final class BrowserModel {
     /// otherwise retain every icon it ever saw. Cheap because the bound is the tab count, not history length.
     private var faviconCache: [String: NSImage] = [:]
 
-    private func handleURLChange(_ engineID: UInt64, _ url: String) {
+    func handleURLChange(_ engineID: UInt64, _ url: String) {
         guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
+        if id == selectedTabID { clearHoverFeedback() }
         tab.update(url: url)
         workspaceManager.updateTab(id, url: url, title: tab.title, faviconRef: tab.faviconRef)
         if id == selectedTabID {
@@ -697,6 +821,61 @@ public final class BrowserModel {
     private func handleLoadingStateChange(_ engineID: UInt64, _ isLoading: Bool) {
         guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
         tab.setLoading(isLoading)
+    }
+
+    func handleLoadStart(_ engineID: UInt64) {
+        guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
+        tab.setLoading(true)
+        guard id == selectedTabID else { return }
+        // Whatever was hovered belongs to the document being replaced.
+        clearHoverFeedback()
+    }
+
+    /// The URL itself still arrives through `onURLChange`: the commit carries none, and the ABI has no URL getter.
+    func handleTopLevelNavigationCommit(_ engineID: UInt64) {
+        guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
+        // A committed document is a live renderer, so a crash overlay from the previous one is stale. Defensive: the
+        // engine also clears it from `did_accept_presented_backing_store` via `on_crash_overlay_state_change`, which is
+        // the authoritative switch. This covers a tab whose recovery never re-presents a paint.
+        tab.setCrashed(false)
+        // Deliberately no `refreshHistoryAvailability()`: the engine fires this from `did_activate_history_entry`, and
+        // `navigate_back_action`/`navigate_forward_action` are only rewritten afterwards, by
+        // `update_navigation_action_state` from `finish_history_operation`. Reading them here returns the previous
+        // document's actions. `onLoadFinish` and `onHistoryTraversalComplete` are the callbacks that run after the
+        // bookkeeping, and they are what refresh the buttons.
+    }
+
+    /// A back/forward traversal finished, committed or cancelled. This is the only signal that the engine's own
+    /// history bookkeeping is complete, so it is where the buttons may be re-read.
+    func handleHistoryTraversalComplete(_ engineID: UInt64) {
+        guard let id = engineToTab[engineID] else { return }
+        if id == selectedTabID { refreshHistoryAvailability() }
+    }
+
+    func handleLinkHover(_ engineID: UInt64, _ url: String) {
+        guard engineID == selectedTab?.engineID else { return }
+        hoveredLink = url
+    }
+
+    func handleLinkUnhover(_ engineID: UInt64) {
+        guard engineID == selectedTab?.engineID else { return }
+        hoveredLink = nil
+    }
+
+    /// Drops the hovered-URL label and the page's tooltip together: they are the same gesture's two halves, and either
+    /// one left behind describes an element the pointer is no longer over.
+    func clearHoverFeedback() {
+        hoveredLink = nil
+        webView.applyTooltip(nil)
+    }
+
+    func setCrashed(_ crashed: Bool, on engineID: UInt64) {
+        guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
+        tab.setCrashed(crashed)
+        // A renderer that has just died cannot send the leave/unhover that would clear these, so the chrome would go on
+        // describing a link on a dead page. Only the visible tab has anything to clear; a background tab's crash must
+        // not touch the label belonging to the page the user is looking at.
+        if crashed, id == selectedTabID { clearHoverFeedback() }
     }
 
     private func handleFaviconChange(_ engineID: UInt64, _ data: Data?, _ hash: String?) {

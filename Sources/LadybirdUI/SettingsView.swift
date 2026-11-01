@@ -198,26 +198,7 @@ struct AppearanceSettingsPane: View {
             } header: {
                 Text("App")
             } footer: {
-                Text("Applies to the browser window, sidebar, and settings chrome.")
-            }
-
-            // Not wired up: the engine controls page theming, and there is no native surface for the per-site half yet.
-            // Shown disabled so the gap is visible rather than a surprise.
-            Section {
-                LabeledContent {
-                    // Plain text, not a disabled bordered button: a greyed button still reads as "this is the action
-                    // here", which is worse than saying plainly that the control does not exist yet.
-                    Text("Not available yet")
-                        .foregroundStyle(.tertiary)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Website appearance")
-                        Text("Pages follow their own theme. Forcing a dark theme per site is controlled by the engine.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                Text("Applies to the browser window, sidebar, settings chrome, and the pages you have open.")
             }
         }
         .formStyle(.grouped)

@@ -261,6 +261,27 @@ struct RuntimeTeardownTests {
         #expect(model.selectedTabID == nil)
     }
 
+    /// Reload goes through `LbTabReload`, which needs an engine tab. Without one it must do nothing at all: a reload
+    /// that fell back to `load(currentURL)` would fabricate a navigation for a tab the user never opened.
+    @Test("Reloading or stopping with no engine tab does nothing")
+    func reloadWithoutEngineIsInert() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+        let manager = WorkspaceManager(store: store)
+        _ = manager.createWorkspace(name: "Only")
+        let tab = try #require(manager.createTab(url: "https://example.com"))
+
+        let model = BrowserModel(store: store)
+        #expect(model.selectedTab?.isLoaded == false)
+        model.reload()
+        model.reload(bypassCache: true)
+        model.stopLoading()
+
+        #expect(model.selectedTab?.isLoaded == false)
+        #expect(model.selectedTab?.currentURL == "https://example.com")
+        #expect(model.tabs.map(\.id) == [tab.id])
+    }
+
     /// Shutdown clears only the disposable engine cache. The descriptor graph is the durable source of truth and must
     /// survive applicationWillTerminate — clearing it here would make quit itself erase the next launch.
     @Test("Shutdown without a running engine preserves the durable graph")

@@ -95,6 +95,17 @@ public final class PortWebView: NSView {
     /// so that a frame logged during a tab switch is attributable to the right page.
     public var currentTabID: UInt64 = 0
 
+    /// The page's tooltip, as AppKit's own: `NSView.toolTip` gives native placement and dismissal, so nothing here has to
+    /// position a window. One entry point for set and clear, because a tooltip left behind is visible over the next page.
+    ///
+    /// shortcut: placement is native rather than at the CSS point the page asked for, upgrade to a positioned popover if
+    /// a page is ever found whose tooltip must follow its element.
+    public func applyTooltip(_ text: String?) {
+        let value = (text?.isEmpty ?? true) ? nil : text
+        guard toolTip != value else { return }
+        toolTip = value
+    }
+
     private var lastViewport: (width: Int32, height: Int32, scale: Double)?
 
     public override init(frame: NSRect) {

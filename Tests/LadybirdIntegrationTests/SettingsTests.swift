@@ -6,6 +6,7 @@
  * Isolated unit tests for application settings persistence, validation, and safe fallbacks.
  */
 
+import AppKit
 import Foundation
 import Testing
 
@@ -135,5 +136,34 @@ struct SettingsTests {
         #expect(settings.newTabDestinationType == .blank)
         #expect(settings.customNewTabURL == AppSettings.defaultCustomURL)
         #expect(settings.newTabURL == "about:blank")
+    }
+}
+
+/// Pages follow the same light/dark answer as the chrome, so the resolution is the thing worth pinning: `.system` must
+/// not silently mean "light" on a dark desktop, or every page would stay white next to a dark window.
+@Suite("Website appearance resolution", .serialized)
+@MainActor
+struct AppearanceResolutionTests {
+    @Test("An explicit light or dark policy resolves without consulting the system")
+    func explicitPolicies() {
+        #expect(AppAppearance.light.resolvedIsDark == false)
+        #expect(AppAppearance.dark.resolvedIsDark == true)
+    }
+
+    /// `.system` is the only case that can disagree with the setting, and its answer has to match what the chrome is
+    /// actually drawing — which is NSApp's effective appearance, not the OS preference, because the app can override it.
+    @Test("The system policy follows the app's effective appearance, not a guess")
+    func systemPolicyFollowsEffectiveAppearance() throws {
+        // `NSApplication.shared`, not `NSApp`: the latter is nil until something touches the shared instance, so a
+        // filtered run that skipped the view-hosting test would make this pass while asserting nothing.
+        let app = NSApplication.shared
+        let original = app.appearance
+        defer { app.appearance = original }
+
+        app.appearance = NSAppearance(named: .darkAqua)
+        #expect(AppAppearance.system.resolvedIsDark == true)
+
+        app.appearance = NSAppearance(named: .aqua)
+        #expect(AppAppearance.system.resolvedIsDark == false)
     }
 }

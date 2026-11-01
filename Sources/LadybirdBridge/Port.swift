@@ -97,6 +97,22 @@ public struct PortPageCallbacks {
     public var onNewTab: ((UInt64, UInt64, Bool, Bool) -> Void)?
     /// The engine has already destroyed `tab`; the host must remove its UI state without calling destroy again.
     public var onTabClosed: ((UInt64) -> Void)?
+    /// A navigation in `tab` started. The other half is `PortCallbacks.onLoadFinish`. It carries no URL: the engine has
+    /// not resolved one yet at this point, so the address still arrives through `onURLChange`.
+    public var onLoadStart: ((UInt64) -> Void)?
+    /// A top-level navigation's document committed in `tab`. Also URL-less. It fires from the engine's
+    /// `did_activate_history_entry`, which is *before* `update_navigation_action_state`, so the engine's back/forward
+    /// actions still describe the previous document here — re-read them from `onHistoryTraversalComplete` or
+    /// `onLoadFinish` instead.
+    public var onTopLevelNavigationCommit: ((UInt64) -> Void)?
+    /// A back/forward traversal finished in `tab`, committed or cancelled. The engine's history bookkeeping is complete
+    /// by now, so this is where back/forward availability may be re-read.
+    public var onHistoryTraversalComplete: ((UInt64) -> Void)?
+    /// The renderer process for `tab` died. `reason` is a `WebContentCrashReason` ordinal: 0 process crash, 1 rejected IPC.
+    /// Notifications only — they never block the page, so a host that ignores them is left showing a dead frame.
+    public var onWebContentCrashed: ((UInt64, Int32) -> Void)?
+    /// The engine wants its crash overlay shown (true) or hidden (false) over `tab`.
+    public var onCrashOverlayStateChange: ((UInt64, Bool) -> Void)?
 
     public init() {}
 }
@@ -365,6 +381,31 @@ public final class PortApp {
             let callback = context.page.onTabClosed
             MainActor.assumeIsolated { callback?(tab) }
         }
+        group.on_load_start = { raw, tab in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onLoadStart
+            MainActor.assumeIsolated { callback?(tab) }
+        }
+        group.on_top_level_navigation_commit = { raw, tab in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onTopLevelNavigationCommit
+            MainActor.assumeIsolated { callback?(tab) }
+        }
+        group.on_history_traversal_complete = { raw, tab in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onHistoryTraversalComplete
+            MainActor.assumeIsolated { callback?(tab) }
+        }
+        group.on_web_content_crashed = { raw, tab, reason in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onWebContentCrashed
+            MainActor.assumeIsolated { callback?(tab, reason) }
+        }
+        group.on_crash_overlay_state_change = { raw, tab, active in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onCrashOverlayStateChange
+            MainActor.assumeIsolated { callback?(tab, active != 0) }
+        }
         pageCallbacksInstalled = LbAppSetPageCallbacks(handle, &group) == 1
     }
 
@@ -427,6 +468,22 @@ public final class PortApp {
         }
 
         uiCallbacksInstalled = LbAppSetUiCallbacks(handle, &group) == 1
+    }
+
+    /// Which engine theme subsequently created tabs load. Tabs that already exist keep theirs — a headless view's theme
+    /// buffer is fixed at construction — so an already-open page is rethemed through `setColorScheme` instead.
+    public func setTheme(dark: Bool) {
+        guard let handle else { return }
+        LbAppSetTheme(handle, dark ? 1 : 0)
+    }
+
+    /// What an existing tab's `prefers-color-scheme` resolves to. This reaches the page, unlike `setTheme`, which only
+    /// picks the engine's own colours for tabs created afterwards.
+    public func setColorScheme(dark: Bool, in tab: UInt64) {
+        guard let handle else { return }
+        // Named cases, not literals: this is the header's own numbering (auto, light, dark), which deliberately differs
+        // from the engine enum's order, so a number here would silently turn dark pages light after an upstream sync.
+        LbTabSetColorScheme(handle, tab, Int32(dark ? LbPreferredColorSchemeDark.rawValue : LbPreferredColorSchemeLight.rawValue))
     }
 
     /// The header's own pump driver: a `CFRunLoopTimer` in `kCFRunLoopCommonModes`, so a live resize or a held menu
@@ -517,6 +574,20 @@ public final class PortApp {
         case forward
 
         var delta: Int32 { self == .back ? -1 : 1 }
+    }
+
+    /// Reloads the tab's current document. Not a substitute for `load(currentURL)`: the engine marks the history visit
+    /// a reload, so a navigation stopped before its document committed is retried instead of becoming a new entry.
+    /// `bypassCache` re-fetches from the network.
+    public func reload(in tab: UInt64, bypassCache: Bool = false) {
+        guard let handle else { return }
+        LbTabReload(handle, tab, bypassCache ? 1 : 0)
+    }
+
+    /// Stops the tab's current navigation and leaves the document that was showing.
+    public func stopLoading(in tab: UInt64) {
+        guard let handle else { return }
+        LbTabStopLoading(handle, tab)
     }
 
     public func traverseHistory(_ direction: HistoryDirection, in tab: UInt64) {
