@@ -108,6 +108,9 @@ struct TabSidebar: View {
             .dropDestination(for: String.self) { ids, _ in
                 moved(ids, to: .normal, at: nil)
             }
+            // Space switch: the pinned/normal lists are different data, so they fade and slide rather than swapping
+            // instantly. Driving it off the space id means one place covers the dock, the swipe and the settings list.
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.activeWorkspace?.id)
             .contextMenu {
                 if let activeWorkspace = model.activeWorkspace {
                     SpaceContextMenu(workspace: activeWorkspace, model: model, actionState: actionState)

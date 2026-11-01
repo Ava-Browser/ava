@@ -14,6 +14,7 @@ public struct BrowserWindow: View {
     @State private var spaceActionState = SpaceActionState()
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var addressState = AddressBarState()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init() {}
@@ -64,6 +65,7 @@ public struct BrowserWindow: View {
                     if reduceTransparency {
                         Color.clear
                     } else {
+                        // The tint is per-space, so switching spaces cross-fades it instead of swapping the colour.
                         LinearGradient(
                             colors: [
                                 Color(hex: activeWorkspace.theme.startHex).opacity(0.08),
@@ -72,9 +74,12 @@ public struct BrowserWindow: View {
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
+                        .id(activeWorkspace.id)
+                        .transition(.opacity)
                     }
                 }
             }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.activeWorkspace?.id)
             .modifier(SpaceActionModifier(model: model, actionState: spaceActionState))
             // The width is not persisted here on purpose: SwiftUI's NavigationSplitView already writes the column's
             // frame to `NSSplitView Subview Frames` in the app's preferences and restores it on launch. Tracking it
