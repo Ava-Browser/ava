@@ -280,6 +280,38 @@ struct WorkspacePersistenceTests {
         #expect(restored.tabs(in: .normal).map(\.id) == [second.id, third.id, first.id])
         #expect(restored.tabs(in: .pinned).map(\.id) == [pinned.id])
     }
+
+    /// An essential can be selected from every space. Once it lands in Pinned it belongs to one space only, so the
+    /// other spaces were pointing at a tab their own list no longer contains — `BrowserModel.selectWorkspace` would
+    /// then present a page the sidebar does not show. Only `normalize()` on the next launch repaired it before.
+    @Test("Moving a tab out of Essentials repairs every other space's selection")
+    func leavingEssentialsRepairsOtherSpaces() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+
+        let manager = WorkspaceManager(store: store)
+        let first = manager.createWorkspace(name: "First")
+        let second = manager.createWorkspace(name: "Second")
+        let otherEssential = try #require(manager.createTab(tier: .essential, url: "https://mail.example"))
+        let moving = try #require(manager.createTab(tier: .essential, url: "https://docs.example"))
+
+        // Both spaces are showing the tab that is about to leave the tier.
+        manager.selectTab(moving.id, in: first.id)
+        manager.selectTab(moving.id, in: second.id)
+        #expect(manager.activeTabID == moving.id)
+
+        manager.moveTab(moving.id, to: .pinned, in: second.id)
+
+        // The destination keeps it; the other space falls back to a tab it can actually show.
+        #expect(manager.tabs(in: .pinned, workspaceID: second.id).map(\.id) == [moving.id])
+        #expect(manager.workspaces.first { $0.id == second.id }?.activeTabID == moving.id)
+        #expect(manager.workspaces.first { $0.id == first.id }?.activeTabID == otherEssential.id)
+        #expect(manager.tabs(in: .normal, workspaceID: first.id).isEmpty)
+
+        // And the repair is what a fresh manager would have derived anyway, so nothing is left for `normalize()`.
+        let restored = WorkspaceManager(store: store)
+        #expect(restored.workspaces.first { $0.id == first.id }?.activeTabID == otherEssential.id)
+    }
 }
 
 @Suite("Runtime teardown")

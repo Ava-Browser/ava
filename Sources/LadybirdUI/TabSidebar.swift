@@ -179,12 +179,17 @@ struct TabSidebar: View {
     }
 
     /// The slot a drop point means in a uniform row-major grid.
+    ///
+    /// The right half of a tile means "after it", which is what makes reordering possible at all: every position
+    /// between two tiles would otherwise be the left half of the later one. For the last tile of a full row that must
+    /// be able to reach `count`, or the final slot is unreachable from inside the grid.
     private func gridSlot(at location: CGPoint, count: Int) -> Int {
         let stride = EssentialTile.size + EssentialTile.spacing
         let columns = max(1, Int((essentialsWidth + EssentialTile.spacing) / stride))
         let row = max(0, Int(location.y / stride))
         let column = max(0, min(columns - 1, Int(location.x / stride)))
-        return min(row * columns + column, count)
+        let afterTile = location.x.truncatingRemainder(dividingBy: stride) >= EssentialTile.size / 2
+        return min(row * columns + column + (afterTile ? 1 : 0), count)
     }
 
     // MARK: - Active Space Header

@@ -289,6 +289,13 @@ public final class WorkspaceManager {
             tabs[tabIndex].workspaceID = destination
             let insertion = insertionPoint(for: slot, in: workspaces[index].tabOrder, tier: tier)
             workspaces[index].tabOrder.insert(id, at: insertion)
+            // Leaving Essentials: every space could select it, so the ones that are not the destination are now
+            // pointing at a tab their own list does not contain. `BrowserModel.selectWorkspace` would then present a
+            // tab the sidebar does not list. Same repair `closeTab` does for an essential, down to preferring another
+            // essential because that is the kind of tab the space was showing.
+            for other in workspaces.indices where workspaces[other].id != destination && workspaces[other].activeTabID == id {
+                workspaces[other].activeTabID = essentialOrder.first ?? workspaces[other].tabOrder.first
+            }
         }
         persist()
     }
