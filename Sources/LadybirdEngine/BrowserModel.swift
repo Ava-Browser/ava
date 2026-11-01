@@ -135,6 +135,17 @@ public final class BrowserModel {
         page.onTabClosed = { [weak self] engineID in
             MainActor.assumeIsolated { self?.handleEngineClosedTab(engineID) }
         }
+        // The first moment of a navigation. `onLoadingStateChange` is not that moment — it follows the engine's load
+        // state, which a fresh navigation enters only after its command reaches WebContent, so the spinner and the stop
+        // button would lag every click on a link.
+        page.onLoadStart = { [weak self] engineID in
+            MainActor.assumeIsolated { self?.handleLoadStart(engineID) }
+        }
+        // The document the tab runs has changed. `onURLChange` covers the address bar for in-page and redirect updates,
+        // but it is also suppressed when the URL did not change, so history availability has to be refreshed here.
+        page.onTopLevelNavigationCommit = { [weak self] engineID in
+            MainActor.assumeIsolated { self?.handleTopLevelNavigationCommit(engineID) }
+        }
         page.onWebContentCrashed = { [weak self] engineID, _ in
             MainActor.assumeIsolated { self?.setCrashed(true, on: engineID) }
         }
@@ -727,6 +738,21 @@ public final class BrowserModel {
     private func handleLoadingStateChange(_ engineID: UInt64, _ isLoading: Bool) {
         guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
         tab.setLoading(isLoading)
+    }
+
+    func handleLoadStart(_ engineID: UInt64) {
+        guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
+        tab.setLoading(true)
+        if id == selectedTabID { refreshHistoryAvailability() }
+    }
+
+    /// The URL itself still arrives through `onURLChange`: the commit carries none, and the ABI has no URL getter. What
+    /// is only knowable here is that the engine's history now belongs to the new document.
+    func handleTopLevelNavigationCommit(_ engineID: UInt64) {
+        guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
+        // A committed document is a live renderer, so a crash overlay from the previous one is stale.
+        tab.setCrashed(false)
+        if id == selectedTabID { refreshHistoryAvailability() }
     }
 
     func setCrashed(_ crashed: Bool, on engineID: UInt64) {

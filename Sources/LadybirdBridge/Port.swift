@@ -97,6 +97,12 @@ public struct PortPageCallbacks {
     public var onNewTab: ((UInt64, UInt64, Bool, Bool) -> Void)?
     /// The engine has already destroyed `tab`; the host must remove its UI state without calling destroy again.
     public var onTabClosed: ((UInt64) -> Void)?
+    /// A navigation in `tab` started. The other half is `PortCallbacks.onLoadFinish`. It carries no URL: the engine has
+    /// not resolved one yet at this point, so the address still arrives through `onURLChange`.
+    public var onLoadStart: ((UInt64) -> Void)?
+    /// A top-level navigation's document committed in `tab`. Also URL-less; it means the engine's history and
+    /// back/forward actions are now the new document's.
+    public var onTopLevelNavigationCommit: ((UInt64) -> Void)?
     /// The renderer process for `tab` died. `reason` is a `WebContentCrashReason` ordinal: 0 process crash, 1 rejected IPC.
     /// Notifications only — they never block the page, so a host that ignores them is left showing a dead frame.
     public var onWebContentCrashed: ((UInt64, Int32) -> Void)?
@@ -368,6 +374,16 @@ public final class PortApp {
         group.on_tab_closed = { raw, tab in
             guard let context = CallbackContext.resolve(raw) else { return }
             let callback = context.page.onTabClosed
+            MainActor.assumeIsolated { callback?(tab) }
+        }
+        group.on_load_start = { raw, tab in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onLoadStart
+            MainActor.assumeIsolated { callback?(tab) }
+        }
+        group.on_top_level_navigation_commit = { raw, tab in
+            guard let context = CallbackContext.resolve(raw) else { return }
+            let callback = context.page.onTopLevelNavigationCommit
             MainActor.assumeIsolated { callback?(tab) }
         }
         group.on_web_content_crashed = { raw, tab, reason in
