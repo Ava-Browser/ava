@@ -242,6 +242,44 @@ struct WorkspacePersistenceTests {
         #expect(restored.tabs(in: .normal).isEmpty)
         #expect(restored.tabs(in: .pinned).map(\.id) == [tab.id])
     }
+
+    @Test("A drop reorders within a tier and moves between all three")
+    func dragReordersAndRetiers() throws {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+
+        let manager = WorkspaceManager(store: store)
+        _ = manager.createWorkspace(name: "Only")
+        let first = try #require(manager.createTab(tier: .normal, url: "https://one.example"))
+        let second = try #require(manager.createTab(tier: .normal, url: "https://two.example"))
+        let third = try #require(manager.createTab(tier: .normal, url: "https://three.example"))
+
+        // Within a tier: dropping `third` on the top half of `first` puts it first.
+        manager.moveTab(third.id, to: .normal, at: 0)
+        #expect(manager.tabs(in: .normal).map(\.id) == [third.id, first.id, second.id])
+
+        // Pinned, then back to unpinned as a different tier rather than an append-only special case.
+        manager.moveTab(first.id, to: .pinned, at: 0)
+        let pinned = try #require(manager.createTab(tier: .pinned, url: "https://pinned.example"))
+        manager.moveTab(pinned.id, to: .pinned, at: 0)
+        #expect(manager.tabs(in: .pinned).map(\.id) == [pinned.id, first.id])
+
+        manager.moveTab(first.id, to: .normal, at: 1)
+        #expect(manager.tabs(in: .pinned).map(\.id) == [pinned.id])
+        #expect(manager.tabs(in: .normal).map(\.id) == [third.id, first.id, second.id])
+
+        // Essentials are global, and coming back from them re-enters the active space.
+        manager.moveTab(second.id, to: .essential)
+        #expect(manager.tabs(in: .normal).map(\.id) == [third.id, first.id])
+        #expect(manager.tabs(in: .essential).map(\.id) == [second.id])
+        manager.moveTab(second.id, to: .normal, at: 0)
+        #expect(manager.tabs(in: .normal).map(\.id) == [second.id, third.id, first.id])
+
+        // Order is durable, not just in-memory.
+        let restored = WorkspaceManager(store: store)
+        #expect(restored.tabs(in: .normal).map(\.id) == [second.id, third.id, first.id])
+        #expect(restored.tabs(in: .pinned).map(\.id) == [pinned.id])
+    }
 }
 
 @Suite("Runtime teardown")

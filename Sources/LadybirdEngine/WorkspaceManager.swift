@@ -63,9 +63,15 @@ public final class WorkspaceManager {
             ids = essentialOrder
         } else {
             guard let workspace = workspaces.first(where: { $0.id == (workspaceID ?? activeSpaceID) }) else { return [] }
-            ids = workspace.tabOrder.filter { descriptor($0)?.tier == tier }
+            ids = workspace.tabOrder
         }
-        return ids.compactMap(descriptor)
+        // One index per call. Resolving each id inside `tabs` was quadratic, and the sidebar asks for all three tiers
+        // on every update, so the cost showed up as input lag while a page was loading.
+        let byID = Dictionary(tabs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return ids.compactMap { id in
+            guard let tab = byID[id], tier == .essential || tab.tier == tier else { return nil }
+            return tab
+        }
     }
 
     @discardableResult
@@ -212,13 +218,16 @@ public final class WorkspaceManager {
 
     public func updateTab(_ id: TabID, url: String, title: String? = nil, faviconRef: String? = nil, clearFaviconRef: Bool = false) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        tabs[index].url = url
-        if let title { tabs[index].title = title }
-        if clearFaviconRef {
-            tabs[index].faviconRef = nil
-        } else if let faviconRef {
-            tabs[index].faviconRef = faviconRef
+        let newTitle = title ?? tabs[index].title
+        let newFaviconRef = clearFaviconRef ? nil : (faviconRef ?? tabs[index].faviconRef)
+        // A navigation reports url, title, favicon and loading in separate callbacks, several of them repeats. Each
+        // repeat used to rewrite the whole graph inside the pump (R6), so a no-op now costs nothing.
+        guard tabs[index].url != url || tabs[index].title != newTitle || tabs[index].faviconRef != newFaviconRef else {
+            return
         }
+        tabs[index].url = url
+        tabs[index].title = newTitle
+        tabs[index].faviconRef = newFaviconRef
         persist()
     }
 
@@ -247,25 +256,55 @@ public final class WorkspaceManager {
     /// Moves a tab between sidebar tiers. Dropping on Essentials makes it global; moving it back places it in the
     /// active workspace because an essential deliberately has no owner to remember.
     public func retier(_ id: TabID, to tier: TabTier, in workspaceID: UUID? = nil) {
-        guard let tabIndex = tabs.firstIndex(where: { $0.id == id }), tabs[tabIndex].tier != tier else { return }
-        let oldWorkspaceID = tabs[tabIndex].workspaceID
-        let destination = workspaceID ?? oldWorkspaceID ?? activeSpaceID
+        moveTab(id, to: tier, in: workspaceID)
+    }
+
+    /// Puts a tab in `tier` at `index` within that tier's order; a nil index appends.
+    ///
+    /// Reordering and re-tiering are one mutation: an essential is ordered in `essentialOrder`, a pinned or normal tab
+    /// inside its space's `tabOrder`, and a drop only says which section and where in it.
+    public func moveTab(_ id: TabID, to tier: TabTier, at index: Int? = nil, in workspaceID: UUID? = nil) {
+        guard let tabIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let tab = tabs[tabIndex]
+        let destination = workspaceID ?? tab.workspaceID ?? activeSpaceID
         guard tier == .essential || workspaces.contains(where: { $0.id == destination }) else { return }
 
+        // `index` counts positions in the section as it is drawn, which still contains the dragged tab. Removing it
+        // first shifts every later slot down by one, so a same-tier move has to compensate or the row lands short.
+        let current = (tier == .essential ? essentialOrder : (workspaces.first { $0.id == destination }?.tabOrder ?? []))
+            .filter { descriptor($0)?.tier == tier }
+        var slot = min(max(index ?? current.count, 0), current.count)
+        if let from = current.firstIndex(of: id), from < slot { slot -= 1 }
+
         essentialOrder.removeAll { $0 == id }
-        if let oldWorkspaceID, let index = workspaces.firstIndex(where: { $0.id == oldWorkspaceID }) {
-            workspaces[index].tabOrder.removeAll { $0 == id }
+        if let oldWorkspaceID = tab.workspaceID, let oldIndex = workspaces.firstIndex(where: { $0.id == oldWorkspaceID }) {
+            workspaces[oldIndex].tabOrder.removeAll { $0 == id }
         }
+        tabs[tabIndex].tier = tier
 
         if tier == .essential {
             tabs[tabIndex].workspaceID = nil
-            essentialOrder.append(id)
+            essentialOrder.insert(id, at: slot)
         } else if let destination, let index = workspaces.firstIndex(where: { $0.id == destination }) {
             tabs[tabIndex].workspaceID = destination
-            workspaces[index].tabOrder.append(id)
+            let insertion = insertionPoint(for: slot, in: workspaces[index].tabOrder, tier: tier)
+            workspaces[index].tabOrder.insert(id, at: insertion)
         }
-        tabs[tabIndex].tier = tier
         persist()
+    }
+
+    /// Where the `slot`-th tab of `tier` starts inside a space's mixed `tabOrder`.
+    private func insertionPoint(for slot: Int, in order: [TabID], tier: TabTier) -> Int {
+        let lane = order.filter { descriptor($0)?.tier == tier }
+        if slot < lane.count, let anchor = order.firstIndex(of: lane[slot]) {
+            return anchor
+        }
+        if let last = lane.last, let anchor = order.firstIndex(of: last) {
+            return anchor + 1
+        }
+        // An empty tier keeps the layout order: pinned above, normal below.
+        guard tier == .pinned else { return order.count }
+        return order.firstIndex { descriptor($0)?.tier == .normal } ?? order.count
     }
 
     /// Close only normal tabs in the active space. Pinned and essentials are intentionally untouched.
@@ -319,7 +358,9 @@ public final class WorkspaceManager {
         }
         do {
             try store.save(snapshot())
-            persistenceFailure = nil
+            // Assigning an already-nil value still counts as a change to every observer of this model, which is a
+            // full sidebar invalidation per write.
+            if persistenceFailure != nil { persistenceFailure = nil }
         } catch {
             persistenceFailure = "Could not save spaces: \(error.localizedDescription)"
         }
