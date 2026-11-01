@@ -89,12 +89,6 @@ public final class AppSettings {
     public static let appearanceKey = "org.ladybird.settings.appearance"
     public static let newTabTypeKey = "org.ladybird.settings.newTabType"
     public static let newTabCustomURLKey = "org.ladybird.settings.newTabCustomURL"
-    public static let sidebarWidthKey = "org.ladybird.settings.sidebarWidth"
-
-    /// Matches `navigationSplitViewColumnWidth`'s bounds, so a stored value can never ask for a width the split view
-    /// would clamp anyway. A width outside them (or absent) falls back to the ideal.
-    public static let sidebarWidthRange: ClosedRange<Double> = 180...320
-    public static let defaultSidebarWidth: Double = 240
 
     public static let defaultCustomURL = "https://example.com"
     public static let blankPageURL = "about:blank"
@@ -104,8 +98,6 @@ public final class AppSettings {
     public private(set) var appearance: AppAppearance
     public private(set) var newTabDestinationType: NewTabDestinationType
     public private(set) var customNewTabURL: String
-    /// Remembered automatically from the split view; there is no user-facing control for it.
-    public private(set) var sidebarWidth: Double
 
     public static let shared = AppSettings()
 
@@ -135,14 +127,6 @@ public final class AppSettings {
         } else {
             customNewTabURL = Self.defaultCustomURL
         }
-
-        // 4. Sidebar width, clamped to the range the split view accepts
-        if userDefaults.object(forKey: Self.sidebarWidthKey) != nil,
-           Self.sidebarWidthRange.contains(userDefaults.double(forKey: Self.sidebarWidthKey)) {
-            sidebarWidth = userDefaults.double(forKey: Self.sidebarWidthKey)
-        } else {
-            sidebarWidth = Self.defaultSidebarWidth
-        }
     }
 
     /// The concrete URL string to use when opening a new tab without an explicit URL.
@@ -163,14 +147,6 @@ public final class AppSettings {
         appearance = newAppearance
         userDefaults.set(newAppearance.rawValue, forKey: Self.appearanceKey)
         newAppearance.apply()
-    }
-
-    /// Remembers a dragged sidebar width. Out-of-range values are ignored rather than clamped, so a transient
-    /// intermediate during a drag cannot overwrite a good value with a bound.
-    public func setSidebarWidth(_ width: Double) {
-        guard Self.sidebarWidthRange.contains(width), width != sidebarWidth else { return }
-        sidebarWidth = width
-        userDefaults.set(width, forKey: Self.sidebarWidthKey)
     }
 
     public func setNewTabDestinationType(_ type: NewTabDestinationType) {

@@ -76,15 +76,10 @@ public struct BrowserWindow: View {
                 }
             }
             .modifier(SpaceActionModifier(model: model, actionState: spaceActionState))
-            .navigationSplitViewColumnWidth(
-                min: AppSettings.sidebarWidthRange.lowerBound,
-                ideal: AppSettings.shared.sidebarWidth,
-                max: AppSettings.sidebarWidthRange.upperBound
-            )
-            // Remember the dragged width. SwiftUI has no getter for the column width, so this reads it from AppKit.
-            .background(SidebarWidthProbe { width in
-                AppSettings.shared.setSidebarWidth(Double(width))
-            })
+            // The width is not persisted here on purpose: SwiftUI's NavigationSplitView already writes the column's
+            // frame to `NSSplitView Subview Frames` in the app's preferences and restores it on launch. Tracking it
+            // ourselves duplicated that and could disagree with it. `ideal` only seeds a first launch.
+            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 320)
         } detail: {
             content
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)

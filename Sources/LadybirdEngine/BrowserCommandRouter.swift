@@ -43,7 +43,10 @@ public final class BrowserCommandRouter {
     ///
     /// The close lives here because it needs AppKit, and `LadybirdUI` is deliberately not allowed to touch it.
     public func openEngineSettingsAndDismissSettingsWindow() {
-        openEngineSettings()
+        // Only dismiss once the page is actually opening. `openTab` returns nil when there is no live engine (startup
+        // failed) or the tab could not be created; closing Settings then would look like success and leave the user on
+        // the page they were already reading, with the window they came from gone.
+        guard openEngineSettings() != nil else { return }
         // `keyWindow` is the Settings window: it is modal-free but key while the button is pressed. Guarded by class name
         // so a future non-Settings window cannot be closed by a stale call.
         if NSApp.keyWindow?.className.contains("Settings") == true {
