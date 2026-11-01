@@ -135,5 +135,33 @@ struct SettingsTests {
         #expect(settings.newTabDestinationType == .blank)
         #expect(settings.customNewTabURL == AppSettings.defaultCustomURL)
         #expect(settings.newTabURL == "about:blank")
+        #expect(settings.sidebarWidth == AppSettings.defaultSidebarWidth)
+    }
+
+    /// The width is remembered automatically rather than through a control, so the only things that can go wrong are
+    /// an unreadable stored value and a value the split view would clamp anyway.
+    @Test("Sidebar width round-trips, ignores out-of-range drags, and falls back on a corrupt value")
+    func sidebarWidthPersistence() {
+        let (defaults, suiteName) = createIsolatedDefaults()
+        defer { cleanUpDefaults(suiteName) }
+
+        let settings = AppSettings(userDefaults: defaults)
+        #expect(settings.sidebarWidth == AppSettings.defaultSidebarWidth)
+
+        settings.setSidebarWidth(285)
+        #expect(settings.sidebarWidth == 285)
+        #expect(defaults.double(forKey: AppSettings.sidebarWidthKey) == 285)
+
+        // A transient mid-drag value outside the split view's range must not overwrite a good one.
+        settings.setSidebarWidth(40)
+        settings.setSidebarWidth(9999)
+        #expect(settings.sidebarWidth == 285)
+
+        // A value stored by something else, or from a future range, falls back rather than being clamped.
+        defaults.set(12.0, forKey: AppSettings.sidebarWidthKey)
+        #expect(AppSettings(userDefaults: defaults).sidebarWidth == AppSettings.defaultSidebarWidth)
+
+        defaults.set(300.0, forKey: AppSettings.sidebarWidthKey)
+        #expect(AppSettings(userDefaults: defaults).sidebarWidth == 300)
     }
 }

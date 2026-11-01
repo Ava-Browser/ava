@@ -76,7 +76,15 @@ public struct BrowserWindow: View {
                 }
             }
             .modifier(SpaceActionModifier(model: model, actionState: spaceActionState))
-            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 320)
+            .navigationSplitViewColumnWidth(
+                min: AppSettings.sidebarWidthRange.lowerBound,
+                ideal: AppSettings.shared.sidebarWidth,
+                max: AppSettings.sidebarWidthRange.upperBound
+            )
+            // Remember the dragged width. SwiftUI has no getter for the column width, so this reads it from AppKit.
+            .background(SidebarWidthProbe { width in
+                AppSettings.shared.setSidebarWidth(Double(width))
+            })
         } detail: {
             content
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
@@ -107,6 +115,8 @@ public struct BrowserWindow: View {
                     homeURL: Self.launchURL,
                     overrideRestoredTab: Self.launchURLArgument != nil
                 )
+                // Settings needs a live window to open the engine's settings page; it must not make its own model.
+                BrowserCommandRouter.shared.register(model)
                 addressState.handleTabSwitch(to: model.currentURL)
             }
             .onChange(of: model.selectedTabID) { _, _ in
