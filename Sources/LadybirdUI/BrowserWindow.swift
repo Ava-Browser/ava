@@ -229,6 +229,9 @@ public struct BrowserWindow: View {
                 .overlay(alignment: .bottom) {
                     if let hovered = model.hoveredLink {
                         HoveredLinkStrip(url: hovered)
+                            // It covers the bottom 20 pt of the page, which is exactly where a link near the fold lives.
+                            // The strip shows a destination and does nothing else, so a click there belongs to the page.
+                            .allowsHitTesting(false)
                     }
                 }
         }

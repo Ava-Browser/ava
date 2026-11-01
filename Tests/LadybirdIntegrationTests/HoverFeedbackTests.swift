@@ -126,6 +126,47 @@ struct HoverFeedbackTests {
         #expect(model.webView.toolTip == nil)
     }
 
+    /// A renderer that dies mid-hover can never send the leave event, so the crash itself has to retract both halves of
+    /// the feedback. Otherwise the strip and the tooltip keep naming a link on a page that is no longer running.
+    @Test("A crash on the selected tab clears the hovered link and the tooltip")
+    func selectedTabCrashClearsHover() throws {
+        let (model, store) = makeModel()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+        try adopt(model, engineID: 42)
+
+        model.handleLinkHover(42, "https://elsewhere.example/page")
+        model.webView.applyTooltip("Save changes")
+        #expect(model.hoveredLink != nil)
+        #expect(model.webView.toolTip == "Save changes")
+
+        model.setCrashed(true, on: 42)
+        #expect(model.hoveredLink == nil)
+        #expect(model.webView.toolTip == nil)
+    }
+
+    /// The mirror of `backgroundTabHoverIsIgnored`: a background tab crashing must not blank the label that belongs to
+    /// the page actually on screen, and a crash being *cleared* must not clear feedback either.
+    @Test("A background tab's crash leaves the selected tab's hover alone")
+    func backgroundCrashLeavesHover() throws {
+        let (model, store) = makeModel()
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+        // 42 is the visible tab; 99 is a second tab in another space, so it is never the selected one.
+        let selected = try adopt(model, engineID: 42)
+        _ = try #require(model.adoptEngineTab(parent: selected, engineID: 99, activate: false))
+        model.select(selected, force: true)
+
+        model.handleLinkHover(42, "https://elsewhere.example/page")
+        model.webView.applyTooltip("Save changes")
+
+        model.setCrashed(true, on: 99)
+        #expect(model.hoveredLink == "https://elsewhere.example/page")
+        #expect(model.webView.toolTip == "Save changes")
+
+        // Clearing a crash is not a crash: it must never retract feedback on its own.
+        model.setCrashed(false, on: 42)
+        #expect(model.hoveredLink == "https://elsewhere.example/page")
+    }
+
     @Test("An empty tooltip clears the slot rather than showing nothing")
     func emptyTooltipClears() {
         let view = PortWebView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))

@@ -872,6 +872,10 @@ public final class BrowserModel {
     func setCrashed(_ crashed: Bool, on engineID: UInt64) {
         guard let id = engineToTab[engineID], let tab = runtimeTabs[id] else { return }
         tab.setCrashed(crashed)
+        // A renderer that has just died cannot send the leave/unhover that would clear these, so the chrome would go on
+        // describing a link on a dead page. Only the visible tab has anything to clear; a background tab's crash must
+        // not touch the label belonging to the page the user is looking at.
+        if crashed, id == selectedTabID { clearHoverFeedback() }
     }
 
     private func handleFaviconChange(_ engineID: UInt64, _ data: Data?, _ hash: String?) {
